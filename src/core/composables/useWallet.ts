@@ -122,6 +122,14 @@ export function useWallet() {
     }
   }
 
+  // Add a Ledger wallet from account 0's public key (hex)
+  async function addLedgerWallet(publicKeyHex: string, name?: string) {
+    const added = await walletService.addLedgerWallet(publicKeyHex, name)
+    await loadWalletData()
+    window.dispatchEvent(new CustomEvent('wallet-status-changed'))
+    return added
+  }
+
   // Export a wallet as a Syrius-compatible keystore file (verifies the password)
   function exportKeystore(address: string, password: string) {
     return walletService.exportKeystore(address, password)
@@ -290,6 +298,7 @@ export function useWallet() {
     unlockWallet,
     changePassword,
     importKeystore,
+    addLedgerWallet,
     exportKeystore,
     lockWallet,
     lockAllWallets,

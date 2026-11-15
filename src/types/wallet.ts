@@ -27,6 +27,8 @@ export interface WalletAccount {
   index: number
   label?: string
   hidden?: boolean
+  /** Ledger accounts: Ed25519 public key (hex), checked against the device before signing. */
+  publicKey?: string
 }
 
 // Complete wallet with encrypted keyfile
@@ -35,6 +37,8 @@ export interface Wallet {
   baseAddress: string
   encryptedKeyFile: KeyFileEncryptedData
   accounts: WalletAccount[]
+  /** 'ledger': keys live on a Ledger device; encryptedKeyFile is then a placeholder. */
+  kind?: 'ledger'
   createdAt: number
 }
 

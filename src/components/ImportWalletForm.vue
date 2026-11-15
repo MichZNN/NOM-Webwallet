@@ -18,6 +18,7 @@ import {
 import {EyeIcon, EyeOffIcon} from 'lucide-vue-next'
 import PasswordStrengthMeter from './PasswordStrengthMeter.vue'
 import ImportKeystoreForm from './ImportKeystoreForm.vue'
+import LedgerConnectForm from './LedgerConnectForm.vue'
 
 const emit = defineEmits<{
   success: [walletAddress: string]
@@ -27,7 +28,7 @@ const emit = defineEmits<{
 const wallet = useWallet()
 const toast = useToast()
 
-const source = ref<'phrase' | 'keystore'>('phrase')
+const source = ref<'phrase' | 'keystore' | 'ledger'>('phrase')
 const name = ref('')
 const mnemonic = ref('')
 const password = ref('')
@@ -94,10 +95,12 @@ async function handleImport() {
         {{
           source === 'phrase'
             ? 'Enter your recovery phrase to restore your wallet'
-            : 'Open a keystore file to restore your wallet'
+            : source === 'keystore'
+              ? 'Open a keystore file to restore your wallet'
+              : 'Use the accounts of your Ledger hardware wallet'
         }}
       </p>
-      <div class="mb-2 grid grid-cols-2 gap-2" role="group" aria-label="Import from">
+      <div class="mb-2 grid grid-cols-3 gap-2" role="group" aria-label="Import from">
         <Button
           type="button"
           size="sm"
@@ -116,11 +119,26 @@ async function handleImport() {
         >
           Keystore File
         </Button>
+        <Button
+          type="button"
+          size="sm"
+          :variant="source === 'ledger' ? 'default' : 'outline'"
+          :aria-pressed="source === 'ledger'"
+          @click="source = 'ledger'"
+        >
+          Ledger
+        </Button>
       </div>
     </div>
 
+    <LedgerConnectForm
+      v-if="source === 'ledger'"
+      @success="(address) => emit('success', address)"
+      @cancel="emit('cancel')"
+    />
+
     <ImportKeystoreForm
-      v-if="source === 'keystore'"
+      v-else-if="source === 'keystore'"
       @success="(address) => emit('success', address)"
       @cancel="emit('cancel')"
     />

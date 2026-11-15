@@ -19,6 +19,8 @@
     "e2e:testnet": "vitest run --config vitest.testnet.config.ts"
   },
   "dependencies": {
+    "@ledgerhq/hw-transport-webhid": "6.36.0",
+    "@noble/ed25519": "2.3.0",
     "@vueuse/core": "^14.2.0",
     "@walletconnect/sign-client": "^2.24.0",
     "@walletconnect/utils": "^2.24.0",

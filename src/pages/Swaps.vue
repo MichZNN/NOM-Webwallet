@@ -52,6 +52,7 @@ onMounted(() => {
 })
 watch(self, () => void account.loadBalances())
 
+const isLedger = computed(() => wallet.activeWallet.value?.kind === 'ledger')
 const mine = computed(() => sw.swaps.value.filter((s) => s.self === self.value))
 const fmt = (t: TokenAmount) => `${formatAmount(BigInt(t.amount), t.decimals)} ${t.symbol}`
 const inTime = (t: number) => formatCooldown(t - sw.chainNow.value)
@@ -259,7 +260,14 @@ function describe(s: Swap): string {
         </CardContent>
       </Card>
 
-      <div class="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm">
+      <Alert v-if="isLedger" variant="destructive">
+        <AlertDescription>
+          P2P swaps are not available for Ledger accounts: the swap secret is derived from the account key,
+          and finishing a swap needs signing in the background. Use a software wallet for swaps.
+        </AlertDescription>
+      </Alert>
+
+      <div v-if="!isLedger" class="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm">
         <span>Cleared your browser data or using another device? Find this account's open swaps on chain.</span>
         <Button size="sm" variant="outline" :disabled="recovering || sw.isBusy.value" @click="recover">
           {{ recovering ? 'Searching…' : 'Recover swaps' }}
@@ -267,7 +275,7 @@ function describe(s: Swap): string {
       </div>
 
       <!-- Start -->
-      <Card>
+      <Card v-if="!isLedger">
         <CardHeader><Heading as="h2" class="text-lg">Start a swap</Heading></CardHeader>
         <CardContent>
           <form @submit.prevent="startConfirm = true">
@@ -292,7 +300,7 @@ function describe(s: Swap): string {
       </Card>
 
       <!-- Join -->
-      <Card>
+      <Card v-if="!isLedger">
         <CardHeader><Heading as="h2" class="text-lg">Join a swap</Heading></CardHeader>
         <CardContent class="space-y-3">
           <div class="flex gap-2">

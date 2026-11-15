@@ -11,6 +11,9 @@ import {createSerialQueue} from './serial-queue'
 import {holdSendLock} from './send-status'
 import {withTimeout} from './with-timeout'
 import {SEND_TIMEOUT_MS} from '@/config'
+import {Zenon} from 'znn-typescript-sdk'
+import {isLedgerKeyPair, signWithLedger} from './ledger/ledger-sign'
+import type {LedgerKeyPair} from './ledger/ledger-sign'
 
 const SEND_TIMEOUT_MESSAGE =
   'The outcome is unknown: the node did not respond in time and this transaction may still go through. Check your account history before sending again.'
@@ -56,6 +59,8 @@ export class TransactionService extends ChainService {
   // Receive without the send overlay (auto-receive). Still goes through the
   // send queue, so it never races a user's send on the same frontier.
   async receiveInBackground(blockHash: string, keyPair: KeyPair): Promise<AccountBlockTemplate> {
+    // A Ledger would prompt on the device unasked: background sends are off for it.
+    if (isLedgerKeyPair(keyPair as unknown)) throw new Error('Background signing is not available for Ledger accounts')
     await this.ensureInitialized()
     const receiveBlock = AccountBlockTemplate.receive(Hash.parse(blockHash))
 
@@ -65,6 +70,7 @@ export class TransactionService extends ChainService {
   // Embedded contract call without the send overlay (swap auto-unlock). Same
   // queue as every other send.
   async sendEmbeddedInBackground(block: AccountBlockTemplate, keyPair: KeyPair): Promise<AccountBlockTemplate> {
+    if (isLedgerKeyPair(keyPair as unknown)) throw new Error('Background signing is not available for Ledger accounts')
     await this.ensureInitialized()
     return this.publish(block, keyPair, undefined, false)
   }
@@ -95,19 +101,39 @@ export class TransactionService extends ChainService {
     beforePublish?: () => void,
     showOverlay = true
   ): Promise<AccountBlockTemplate> {
+    const ledgerKeyPair = isLedgerKeyPair(keyPair as unknown) ? (keyPair as unknown as LedgerKeyPair) : null
+    const ledger = ledgerKeyPair !== null
     const send = () =>
-      this.sendQueue(() =>
-        withTimeout(
-          (async () => {
-            await this.ensureInitialized()
-            const prepared = await this.zenon.prepareBlock(block, keyPair)
-            beforePublish?.()
-            return this.zenon.ledger.publishRawTransaction(prepared)
-          })(),
+      this.sendQueue(() => {
+        let gaveUp = false
+        const work = (async () => {
+          await this.ensureInitialized()
+          if (ledgerKeyPair) ledgerKeyPair.preparing = true
+          let prepared: AccountBlockTemplate
+          try {
+            prepared = await this.zenon.prepareBlock(block, keyPair)
+          } finally {
+            if (ledgerKeyPair) ledgerKeyPair.preparing = false
+          }
+          // Ledger accounts: prepareBlock put in a dummy signature; get the
+          // real one from the device (with all checks) before publishing.
+          if (ledgerKeyPair) {
+            prepared = await signWithLedger(prepared, ledgerKeyPair, Zenon.getChainIdentifier())
+            // Approved on the device after we reported a timeout: don't send.
+            if (gaveUp) throw new Error('Signed after the time limit; not sent')
+          }
+          beforePublish?.()
+          return this.zenon.ledger.publishRawTransaction(prepared)
+        })()
+        return withTimeout(
+          work,
           SEND_TIMEOUT_MS,
-          SEND_TIMEOUT_MESSAGE
-        )
-      )
+          ledger ? 'Not confirmed on the Ledger in time; nothing was sent' : SEND_TIMEOUT_MESSAGE
+        ).catch((err) => {
+          gaveUp = true
+          throw err
+        })
+      })
     return showOverlay ? holdSendLock(send) : send()
   }
 }

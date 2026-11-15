@@ -258,15 +258,21 @@ function handleAddWalletCancel() {
                 }}
               </DropdownMenuItem>
               <DropdownMenuSeparator v-if="hiddenAccountCount(wallet) > 0" />
-              <DropdownMenuItem @click="handleExportMnemonic(wallet.baseAddress)">
+              <DropdownMenuItem
+                v-if="wallet.kind !== 'ledger'"
+                @click="handleExportMnemonic(wallet.baseAddress)">
                 <KeyIcon class="mr-2 h-4 w-4" />
                 Export Mnemonic
               </DropdownMenuItem>
-              <DropdownMenuItem @click="emit('exportKeystore', wallet.baseAddress)">
+              <DropdownMenuItem
+                v-if="wallet.kind !== 'ledger'"
+                @click="emit('exportKeystore', wallet.baseAddress)">
                 <FileKeyIcon class="mr-2 h-4 w-4" />
                 Export Keystore File
               </DropdownMenuItem>
-              <DropdownMenuItem @click="emit('changePassword', wallet.baseAddress)">
+              <DropdownMenuItem
+                v-if="wallet.kind !== 'ledger'"
+                @click="emit('changePassword', wallet.baseAddress)">
                 <LockKeyholeIcon class="mr-2 h-4 w-4" />
                 Change Password
               </DropdownMenuItem>

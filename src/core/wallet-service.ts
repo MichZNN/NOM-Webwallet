@@ -2,6 +2,8 @@ import {KeyFile, KeyStore} from 'znn-typescript-sdk'
 import type {StorageAdapter, Wallet, WalletAccount, WalletStorage} from '@/types'
 import {KDF_CONFIG, STORAGE_KEY_WALLETS as STORAGE_KEY} from '@/config'
 import {sessionManager} from './session-manager'
+import {LedgerKeyStore, isLedgerWallet} from './ledger/ledger-keystore'
+import {getLedgerApp} from './ledger/connection'
 import {parseKeystoreFile, toSyriusKeystoreFile} from './syrius-keystore'
 import type {SyriusKeystoreFile} from './syrius-keystore'
 import {storageService} from './storage/storage-service'
@@ -90,6 +92,7 @@ export class WalletService {
     const data = await this.storage.get<WalletStorage>(STORAGE_KEY)
     const wallet = data?.wallets.find((w) => w.baseAddress === address)
     if (!wallet) throw new Error('Wallet not found')
+    this.assertNotLedger(wallet, 'Exporting a keystore file')
 
     try {
       const keyStore = await KeyFile.setPassword(password).decrypt(wallet.encryptedKeyFile)
@@ -99,6 +102,49 @@ export class WalletService {
       this.recordFailedAttempt(address)
       throw new Error('Incorrect password')
     }
+  }
+
+  /**
+   * Add a Ledger wallet from account 0's public key (read from the device after
+   * the user confirmed the address on it). No keyfile, no password.
+   */
+  async addLedgerWallet(publicKeyHex: string, name?: string): Promise<Wallet> {
+    const keyStore = new LedgerKeyStore({
+      accounts: [{ address: '', index: 0, publicKey: publicKeyHex }],
+    } as unknown as Wallet)
+    const baseAddress = keyStore.getBaseAddress().toString()
+    const data = (await this.storage.get<WalletStorage>(STORAGE_KEY)) ?? {
+      wallets: [],
+      activeWalletAddress: null,
+      activeAccountAddress: null,
+    }
+    if (data.wallets.some((w) => w.baseAddress === baseAddress)) {
+      throw new Error('This wallet has already been added')
+    }
+    const wallet: Wallet = {
+      name: name || 'Ledger',
+      baseAddress,
+      kind: 'ledger',
+      // Placeholder: Ledger wallets have no keyfile; every keyfile path checks kind first.
+      encryptedKeyFile: {
+        baseAddress,
+        crypto: { argon2Params: { salt: '' }, cipherData: '', cipherName: '', kdf: '', nonce: '' },
+        timestamp: 0,
+        version: 0,
+      },
+      accounts: [{ address: baseAddress, index: 0, label: 'Account 1', publicKey: publicKeyHex }],
+      createdAt: Date.now(),
+    }
+    data.wallets.push(wallet)
+    data.activeWalletAddress = baseAddress
+    data.activeAccountAddress = baseAddress
+    await this.storage.set(STORAGE_KEY, data)
+    sessionManager.unlock(baseAddress, new LedgerKeyStore(wallet).asKeyStore())
+    return wallet
+  }
+
+  private assertNotLedger(wallet: Wallet | undefined, what: string): void {
+    if (isLedgerWallet(wallet)) throw new Error(`${what} is not available for Ledger wallets`)
   }
 
   // Shared logic for saving a wallet
@@ -181,6 +227,12 @@ export class WalletService {
       throw new Error('Wallet not found')
     }
 
+    // Ledger: nothing to decrypt; the device is asked when a block is signed.
+    if (isLedgerWallet(wallet)) {
+      sessionManager.unlock(address, new LedgerKeyStore(wallet).asKeyStore())
+      return
+    }
+
     try {
       const keyFile = KeyFile.setPassword(password)
       // The keyfile is self-describing: decrypt reads its stored KDF params
@@ -230,6 +282,7 @@ export class WalletService {
     const data = await this.storage.get<WalletStorage>(STORAGE_KEY)
     const wallet = data?.wallets.find((w) => w.baseAddress === address)
     if (!wallet) throw new Error('Wallet not found')
+    this.assertNotLedger(wallet, 'Changing the password')
 
     let keyStore: KeyStore
     try {
@@ -289,6 +342,24 @@ export class WalletService {
     // Find next available index
     const maxIndex = wallet.accounts.reduce((max, acc) => Math.max(max, acc.index), -1)
     const newIndex = maxIndex + 1
+
+    if (isLedgerWallet(wallet)) {
+      // The user confirms the new address on the device before it is stored.
+      const app = await getLedgerApp()
+      await app.ensureZenonApp()
+      const publicKey = Buffer.from(await app.publicKey(newIndex, true)).toString('hex')
+      const probe = new LedgerKeyStore({ accounts: [{ index: newIndex, publicKey }] } as unknown as Wallet)
+      const ledgerAccount: WalletAccount = {
+        address: probe.getKeyPair(newIndex).getAddress().toString(),
+        index: newIndex,
+        label: label || `Account ${newIndex + 1}`,
+        publicKey,
+      }
+      wallet.accounts.push(ledgerAccount)
+      if (data) await this.storage.set(STORAGE_KEY, data)
+      sessionManager.unlock(walletAddress, new LedgerKeyStore(wallet).asKeyStore())
+      return ledgerAccount
+    }
 
     // Derive new keypair
     const keyPair = keyStore.getKeyPair(newIndex)

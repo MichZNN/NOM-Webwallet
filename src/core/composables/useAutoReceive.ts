@@ -23,6 +23,8 @@ async function targets(): Promise<AutoReceiveTarget[]> {
 
   for (const wallet of wallets) {
     if (!sessionManager.isUnlocked(wallet.baseAddress)) continue
+    // A Ledger would prompt on the device unasked; receive manually instead.
+    if (wallet.kind === 'ledger') continue
     for (const account of wallet.accounts) {
       if (account.hidden) continue
       result.push({

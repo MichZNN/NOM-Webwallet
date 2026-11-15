@@ -25,6 +25,7 @@ import {TransactionService} from '../transaction-service'
 import {WalletService} from '../wallet-service'
 import {runActivity} from './useActivity'
 import {trackTransaction} from './useTxTracker'
+import {isLedgerKeyPair} from '../ledger/ledger-sign'
 
 interface ChainStore {
   swaps: Swap[]
@@ -158,6 +159,9 @@ async function withKey<T>(address: string, label: string, run: (k: KeyPair) => P
   if (isBusy.value) throw new Error('Another action is still running')
   const keyPair = await keyPairFor(address)
   if (!keyPair) throw new Error('Wallet is locked. Please unlock it first.')
+  // Swaps need the account key (derived secret) and background claiming,
+  // neither of which a Ledger provides.
+  if (isLedgerKeyPair(keyPair)) throw new Error('P2P swaps are not available for Ledger accounts')
   isBusy.value = true
   error.value = null
   try {
