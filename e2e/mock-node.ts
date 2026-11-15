@@ -44,14 +44,18 @@ export interface MockNodeOptions {
   balances?: Record<string, { token: ReturnType<typeof token>; balance: string }>
   /** Extra or overriding RPC handlers, by method name. */
   handlers?: Record<string, Handler>
+  /** Chain id the node reports, by the WebSocket URL the wallet connected to. Default: 1. */
+  chainIdFor?: (url: string) => number
 }
 
 export class MockNode {
   readonly published: PublishedBlock[] = []
   readonly unhandled = new Set<string>()
   private readonly handlers: Record<string, Handler>
+  private readonly chainIdFor: (url: string) => number
 
   constructor(options: MockNodeOptions = {}) {
+    this.chainIdFor = options.chainIdFor ?? (() => 1)
     const balances = {
       [ZNN]: { token: token('ZNN', ZNN), balance: '2000000000000' },
       [QSR]: { token: token('QSR', QSR), balance: '20000000000000' },
@@ -110,12 +114,15 @@ export class MockNode {
 
   async attach(page: Page): Promise<void> {
     await page.routeWebSocket(/^wss?:\/\/(?!localhost)/, (ws) => {
+      const chainIdentifier = this.chainIdFor(ws.url())
       ws.onMessage((raw) => {
         const message = JSON.parse(String(raw))
         const reply = (m: { id: number; method: string; params?: unknown[] }) => {
           const handler = this.handlers[m.method]
           if (!handler) this.unhandled.add(m.method)
-          return { jsonrpc: '2.0', id: m.id, result: handler ? handler(m.params ?? []) : null }
+          let result = handler ? handler(m.params ?? []) : null
+          if (m.method === 'ledger.getFrontierMomentum') result = { ...(result as object), chainIdentifier }
+          return { jsonrpc: '2.0', id: m.id, result }
         }
         ws.send(JSON.stringify(Array.isArray(message) ? message.map(reply) : reply(message)))
       })

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {computed, onMounted, onUnmounted, watch} from 'vue'
-import {formatDate, formatRelativeTime, HISTORY_PAGE_SIZE, onTxProgress, useHistory} from '@/core'
-import {EXPLORER_TX_URL} from '@/config'
+import {formatDate, formatRelativeTime, HISTORY_PAGE_SIZE, onTxProgress, useHistory, useNetwork} from '@/core'
+import {explorerTxUrl} from '@/core/networks'
 import {
   Address,
   Alert,
@@ -28,6 +28,8 @@ const props = withDefaults(
 )
 
 const history = useHistory(() => props.activeAccountAddress)
+const network = useNetwork()
+const txUrl = (hash: string) => explorerTxUrl(network.chainId.value, hash)
 
 const pageCount = computed(() => Math.max(1, Math.ceil(history.total.value / HISTORY_PAGE_SIZE)))
 const hasPrev = computed(() => history.page.value > 0)
@@ -121,7 +123,8 @@ onUnmounted(stopProgress)
                   {{ formatRelativeTime(entry.timestamp) }}
                 </span>
                 <a
-                  :href="EXPLORER_TX_URL + entry.hash"
+                  v-if="txUrl(entry.hash)"
+                  :href="txUrl(entry.hash) ?? undefined"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="inline-flex items-center text-muted-foreground hover:text-foreground"

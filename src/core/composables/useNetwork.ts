@@ -1,8 +1,17 @@
-import {ref} from 'vue'
+import {computed, ref} from 'vue'
 import {readPersistedChainId, readPersistedNetworkId, ZenonService} from '../zenon-service'
 import {TransactionService} from '../transaction-service'
-import {DEFAULT_NODE_URL, STORAGE_KEY_CHAIN_ID, STORAGE_KEY_NETWORK_ID, STORAGE_KEY_SELECTED_NODE,} from '@/config'
+import {
+  DEFAULT_NODE_URL,
+  STORAGE_KEY_CHAIN_ID,
+  STORAGE_KEY_NETWORK_ID,
+  STORAGE_KEY_SELECTED_NODE,
+  STORAGE_KEY_TRACKED_TRANSACTIONS,
+} from '@/config'
 import {storageService} from '../storage/storage-service'
+import {NETWORKS, networkForChainId} from '../networks'
+import {isSendBusy} from '../send-status'
+import type {NetworkKey} from '../networks'
 
 // Module-level reactive state — shared across every useNetwork() caller
 const isConnected = ref(false)
@@ -12,6 +21,15 @@ const error = ref<string | null>(null)
 const currentMomentum = ref<number>(0)
 const chainId = ref<number>(1)
 const networkId = ref<number>(1)
+/** Chain id the connected node reports; differs from chainId when the node is on another network. */
+const nodeChainId = ref<number | null>(null)
+/** The known network for the configured chain id, or null for a custom chain. */
+const activeNetwork = computed(() => networkForChainId(chainId.value))
+const chainMismatch = computed(
+  () => nodeChainId.value !== null && nodeChainId.value !== chainId.value
+)
+/** Set while this window switches networks, so it doesn't react to its own storage writes. */
+export const isSwitchingNetwork = ref(false)
 
 export function useNetwork() {
   const zenonService = ZenonService.getInstance()
@@ -26,6 +44,7 @@ export function useNetwork() {
       await transactionService.ensureInitialized()
       const momentum = await zenonService.getZenon().ledger.getFrontierMomentum()
       currentMomentum.value = momentum.height
+      nodeChainId.value = momentum.chainIdentifier
       isConnected.value = true
     } catch (err) {
       isConnected.value = false
@@ -89,6 +108,41 @@ export function useNetwork() {
     networkId.value = newNetworkId
   }
 
+  /**
+   * Switch to a known network: connect to its first node, check that the node
+   * really is on that chain, then persist node + chain id. The page reloads
+   * afterwards so no data cached for the other network survives (unlocked
+   * wallets lock; their keys only ever live in memory).
+   */
+  async function switchNetwork(key: NetworkKey) {
+    if (isSendBusy.value) throw new Error('Wait until the current transaction is finished')
+    const preset = NETWORKS[key]
+    const previousNode = currentNode.value
+    const previousChainId = chainId.value
+    const previousNetworkId = networkId.value
+    isSwitchingNetwork.value = true
+    try {
+      await changeNode(preset.nodes[0])
+      // checkConnection (inside changeNode) recorded the node's chain id.
+      if (nodeChainId.value !== preset.chainId) {
+        throw new Error(
+          `${preset.nodes[0]} is on chain ${nodeChainId.value}, not ${preset.label} (${preset.chainId})`
+        )
+      }
+      await updateNetworkConfig(preset.chainId, preset.networkId)
+      // Tracked transactions carry no chain id; after the switch they would be
+      // looked up on the wrong network.
+      await storageService.set(STORAGE_KEY_TRACKED_TRANSACTIONS, [])
+    } catch (err) {
+      // Roll back to the previous node and chain id, best-effort.
+      await changeNode(previousNode).catch(() => undefined)
+      await updateNetworkConfig(previousChainId, previousNetworkId).catch(() => undefined)
+      isSwitchingNetwork.value = false
+      throw err
+    }
+    window.location.reload()
+  }
+
   // Load frontier momentum
   async function loadFrontierMomentum() {
     try {
@@ -109,6 +163,9 @@ export function useNetwork() {
   // default-node round-trip. Here we just trigger the connection and mirror the
   // resolved values into reactive state for the UI.
   async function initialize() {
+    // Mirror the persisted config first, so the network banner and explorer
+    // links are right before (or without) a node answering.
+    await loadConfig()
     await checkConnection()
     currentNode.value = zenonService.getNodeUrl()
     chainId.value = zenonService.getChainId()
@@ -146,11 +203,15 @@ export function useNetwork() {
     currentMomentum,
     chainId,
     networkId,
+    nodeChainId,
+    activeNetwork,
+    chainMismatch,
 
     // Methods
     checkConnection,
     changeNode,
     updateNetworkConfig,
+    switchNetwork,
     initialize,
     loadConfig,
     syncNetworkConfig,

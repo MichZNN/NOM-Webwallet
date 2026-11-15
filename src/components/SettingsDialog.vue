@@ -7,6 +7,7 @@ import ExportMnemonicDialog from './ExportMnemonicDialog.vue'
 import ChangePasswordDialog from './ChangePasswordDialog.vue'
 import ExportKeystoreDialog from './ExportKeystoreDialog.vue'
 import NetworkSelector from './NetworkSelector.vue'
+import NetworkSwitch from './NetworkSwitch.vue'
 import {useConnectedSites} from '@/core/composables/useConnectedSites'
 import {useAutoReceive} from '@/core'
 import {
@@ -231,6 +232,7 @@ defineExpose({
         </TabsContent>
 
         <TabsContent value="network">
+          <NetworkSwitch class="mb-4" />
           <NetworkSelector
             :current-node="currentNode"
             @select="(nodeUrl) => emit('select-network', nodeUrl)"

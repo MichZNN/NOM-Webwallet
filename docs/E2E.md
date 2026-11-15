@@ -10,7 +10,8 @@ No network, funds or plasma are needed, and every block the wallet publishes is
 captured and decoded with the SDK's contract ABIs, so the tests assert on the
 exact method, arguments, token and amount that would go on chain.
 
-Covered: keystore import, duplicate-wallet refusal, change password, pillar
+Covered: keystore import, duplicate-wallet refusal, change password, network switch
+(mainnet/testnet, wrong-chain node), pillar
 update, sentinel registration (QSR deposit + register), pillar name
 validation, token issue, mint, burn and update.
 

@@ -7,6 +7,7 @@ import {
   resumeTracking,
   useAccount,
   useAutoReceive,
+  useNetworkSync,
   useNetwork,
   useUnlockTarget,
   useWallet,
@@ -35,6 +36,7 @@ import {
 import NetworkIndicator from '@/components/NetworkIndicator.vue'
 import PlasmaIndicator from '@/components/PlasmaIndicator.vue'
 import SettingsDialog from '@/components/SettingsDialog.vue'
+import NetworkBanner from '@/components/NetworkBanner.vue'
 import UnlockWalletDialog from '@/components/UnlockWalletDialog.vue'
 import DappApprovalDialog from '@/components/DappApprovalDialog.vue'
 import SendOverlay from '@/components/SendOverlay.vue'
@@ -59,6 +61,7 @@ onTxProgress((tx) => {
 })
 const network = useNetwork()
 const autoReceive = useAutoReceive()
+useNetworkSync({ isWalletConnectWindow: () => route.path === '/walletconnect' })
 const walletConnect = useWalletConnect()
 
 // Global unlock dialog state
@@ -93,6 +96,8 @@ onMounted(async () => {
   // Shared one-time load; the router guard may have already triggered it.
   // Wallet-state redirects (no wallet → /setup) are owned by the router guard.
   await wallet.ensureLoaded()
+  // Network label and banner before any node answers, also during first setup.
+  await network.loadConfig()
 
   if (wallet.hasWallets.value) {
     // Initialize network
@@ -417,6 +422,7 @@ async function handleWalletAdded(address: string) {
   <TooltipProvider disable-hoverable-content>
     <div class="relative min-h-screen overflow-x-hidden">
       <Toaster class="pointer-events-auto" />
+      <NetworkBanner />
       <SendOverlay />
       <!-- Ambient brand glow -->
       <div

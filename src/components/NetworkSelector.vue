@@ -111,9 +111,12 @@ async function handleNetworkConfigChange() {
     toast.show('Chain ID and Network ID must be positive whole numbers', 'error')
     return
   }
+  const chainChanged = chainId.value !== network.chainId.value
   try {
     await network.updateNetworkConfig(chainId.value, networkId.value)
     toast.show('Network configuration saved', 'success')
+    // Data cached for the old chain must not mix with the new one.
+    if (chainChanged) window.location.reload()
   } catch (e) {
     console.error('Failed to save network configuration:', e)
     toast.show('Failed to save network configuration', 'error')

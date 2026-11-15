@@ -136,9 +136,6 @@ export const DELIVERED_OUTCOME_TTL_MS = 60 * 1000
 /** App.vue — the extension's WalletConnect popup window, reused across opens. */
 export const SESSION_KEY_WALLETCONNECT_WINDOW_ID = 'nom-wallet.walletConnectWindowId'
 
-/** HistoryTab.vue. Block explorer page for a transaction hash. */
-export const EXPLORER_TX_URL = 'https://zenonhub.io/explorer/transaction/'
-
 /** useAutoReceive.ts. Storage key for the auto-receive on/off setting (default on). */
 export const STORAGE_KEY_AUTO_RECEIVE = 'nom-wallet-auto-receive'
 /** useAutoReceive.ts. Gap between two checks for incoming transactions. */
