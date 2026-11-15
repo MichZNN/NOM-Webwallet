@@ -101,8 +101,8 @@ export class WalletService {
     return wallet
   }
 
-  // Unlock wallet with password
-  async unlockWallet(address: string, password: string): Promise<void> {
+  // Throw while a wallet is in its lockout window after repeated wrong passwords.
+  private assertNotLockedOut(address: string): void {
     const failed = this.failedAttempts.get(address)
 
     if (failed && failed.count >= MAX_UNLOCK_ATTEMPTS) {
@@ -114,6 +114,19 @@ export class WalletService {
         throw new Error(`Too many attempts. Try again in ${remainingSec} seconds.`)
       }
     }
+  }
+
+  private recordFailedAttempt(address: string): void {
+    const current = this.failedAttempts.get(address) ?? { count: 0, lastAttemptAt: 0 }
+    this.failedAttempts.set(address, {
+      count: current.count + 1,
+      lastAttemptAt: Date.now(),
+    })
+  }
+
+  // Unlock wallet with password
+  async unlockWallet(address: string, password: string): Promise<void> {
+    this.assertNotLockedOut(address)
 
     const data = await this.storage.get<WalletStorage>(STORAGE_KEY)
     const wallet = data?.wallets.find((w) => w.baseAddress === address)
@@ -156,13 +169,46 @@ export class WalletService {
         }
       }
     } catch {
-      const current = this.failedAttempts.get(address) ?? { count: 0, lastAttemptAt: 0 }
-      this.failedAttempts.set(address, {
-        count: current.count + 1,
-        lastAttemptAt: Date.now(),
-      })
+      this.recordFailedAttempt(address)
       throw new Error('Invalid password')
     }
+  }
+
+  // Re-encrypt a wallet's key file under a new password. The current password
+  // is verified by decrypting the stored key file, so this works whether or not
+  // the wallet is unlocked, and wrong guesses count toward the unlock lockout.
+  // The unlocked session (if any) is unaffected: the keys themselves don't change.
+  async changePassword(address: string, currentPassword: string, newPassword: string): Promise<void> {
+    this.assertNotLockedOut(address)
+
+    const data = await this.storage.get<WalletStorage>(STORAGE_KEY)
+    const wallet = data?.wallets.find((w) => w.baseAddress === address)
+    if (!wallet) throw new Error('Wallet not found')
+
+    let keyStore: KeyStore
+    try {
+      keyStore = await KeyFile.setPassword(currentPassword).decrypt(wallet.encryptedKeyFile)
+    } catch {
+      this.recordFailedAttempt(address)
+      throw new Error('Current password is incorrect')
+    }
+    this.failedAttempts.delete(address)
+
+    const reEncrypted = await KeyFile.setPassword(newPassword).encrypt(keyStore, KDF_CONFIG)
+
+    // Re-read after the slow KDF and patch only this wallet's key file, so
+    // changes another window saved meanwhile survive. If the key file itself
+    // changed (another password change, or a delete and re-import), don't
+    // overwrite it: the user would end up with a password they didn't expect.
+    const latest = await this.storage.get<WalletStorage>(STORAGE_KEY)
+    const target = latest?.wallets.find((w) => w.baseAddress === address)
+    if (!latest || !target) throw new Error('Wallet not found')
+    if (JSON.stringify(target.encryptedKeyFile) !== JSON.stringify(wallet.encryptedKeyFile)) {
+      throw new Error('This wallet was changed in another window. Please try again.')
+    }
+
+    target.encryptedKeyFile = reEncrypted
+    await this.storage.set(STORAGE_KEY, latest)
   }
 
   // Lock wallet

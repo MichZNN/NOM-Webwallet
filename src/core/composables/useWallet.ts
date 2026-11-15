@@ -104,6 +104,23 @@ export function useWallet() {
     }
   }
 
+  // Change a wallet's password (verifies the current one first)
+  async function changePassword(
+    address: string,
+    currentPassword: string,
+    newPassword: string
+  ): Promise<void> {
+    error.value = null
+
+    try {
+      await walletService.changePassword(address, currentPassword, newPassword)
+      await loadWalletData()
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to change password'
+      throw err
+    }
+  }
+
   // Lock wallet
   function lockWallet(address: string): void {
     walletService.lockWallet(address)
@@ -248,6 +265,7 @@ export function useWallet() {
     createWallet,
     importWallet,
     unlockWallet,
+    changePassword,
     lockWallet,
     lockAllWallets,
     setActiveWallet,

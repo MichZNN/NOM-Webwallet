@@ -26,6 +26,7 @@ import {
   EyeIcon,
   EyeOffIcon,
   KeyIcon,
+  LockKeyholeIcon,
   LockIcon,
   LockOpenIcon,
   MoreVerticalIcon,
@@ -47,6 +48,7 @@ const emit = defineEmits<{
   lock: [address: string]
   delete: [address: string]
   exportMnemonic: [address: string]
+  changePassword: [address: string]
   rename: [address: string, newName: string]
   deriveAccount: [walletAddress: string]
   selectAccount: [address: string]
@@ -257,6 +259,10 @@ function handleAddWalletCancel() {
               <DropdownMenuItem @click="handleExportMnemonic(wallet.baseAddress)">
                 <KeyIcon class="mr-2 h-4 w-4" />
                 Export Mnemonic
+              </DropdownMenuItem>
+              <DropdownMenuItem @click="emit('changePassword', wallet.baseAddress)">
+                <LockKeyholeIcon class="mr-2 h-4 w-4" />
+                Change Password
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem

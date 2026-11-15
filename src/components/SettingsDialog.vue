@@ -4,6 +4,7 @@ import type {Wallet} from '@/types'
 import WalletList from './WalletList.vue'
 import UnlockWalletDialog from './UnlockWalletDialog.vue'
 import ExportMnemonicDialog from './ExportMnemonicDialog.vue'
+import ChangePasswordDialog from './ChangePasswordDialog.vue'
 import NetworkSelector from './NetworkSelector.vue'
 import {useConnectedSites} from '@/core/composables/useConnectedSites'
 import {
@@ -123,6 +124,16 @@ function handleExportMnemonicRequest(address: string) {
   }
 }
 
+// Change password dialog state
+const changePasswordTarget = ref<{ address: string; name: string } | null>(null)
+
+function handleChangePasswordRequest(address: string) {
+  const wallet = props.wallets.find((w) => w.baseAddress === address)
+  if (wallet) {
+    changePasswordTarget.value = { address, name: wallet.name }
+  }
+}
+
 function showExportDialog(address: string, mnemonic: string) {
   const wallet = props.wallets.find((w) => w.baseAddress === address)
   if (wallet) {
@@ -174,6 +185,7 @@ defineExpose({
             @delete="(address) => emit('delete-wallet', address)"
             @rename="(address, newName) => emit('rename-wallet', address, newName)"
             @export-mnemonic="handleExportMnemonicRequest"
+            @change-password="handleChangePasswordRequest"
             @derive-account="(walletAddress) => emit('derive-account', walletAddress)"
             @select-account="(address) => emit('select-account', address)"
             @rename-account="
@@ -299,6 +311,14 @@ defineExpose({
       :mnemonic="exportMnemonic.mnemonic"
       :wallet-name="exportMnemonic.name"
       @close="exportDialogVisible = false"
+    />
+
+    <!-- Change Password Dialog -->
+    <ChangePasswordDialog
+      v-if="changePasswordTarget"
+      :wallet-address="changePasswordTarget.address"
+      :wallet-name="changePasswordTarget.name"
+      @close="changePasswordTarget = null"
     />
   </Teleport>
 </template>
