@@ -173,8 +173,12 @@ function describe(s: Swap): string {
       ? `The counterparty deposited ${s.receive ? fmt(s.receive) : ''}. Complete before ${formatDate((s.counterExpiration ?? 0) - 600)}.`
       : 'Waiting.'
   }
-  if (s.revealedPreimage) return 'The counterparty completed. Receiving your side automatically…'
-  return `Waiting for the counterparty to complete (their deadline: ${formatDate(s.counterExpiration ?? 0)}).`
+  if (s.revealedPreimage) {
+    return wallet.isActiveWalletUnlocked.value
+      ? `The counterparty completed. Receiving your side automatically (before ${formatDate(s.initialExpiration)})…`
+      : `The counterparty completed. Unlock this wallet before ${formatDate(s.initialExpiration)} to receive your side.`
+  }
+  return `Waiting for the counterparty to complete (they can until ${formatDate(s.counterExpiration ?? 0)}). Once they do, keep this wallet open and unlocked before ${formatDate(s.initialExpiration)} to receive.`
 }
 </script>
 

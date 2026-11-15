@@ -44,6 +44,8 @@ export function decodeHtlcBlock(block: AccountBlock): HtlcEvent | null {
       hashType: Number(hashType),
       keyMaxSize: Number(keyMaxSize),
       hashLock: strip0x(hashLock),
+      // A rejected Create is refunded by a follow-on block; a good one has none.
+      failed: (block.descendantBlocks?.length ?? 0) > 0,
     }
   }
   const unlocked = tryDecode('Unlock')
@@ -149,11 +151,13 @@ export class SwapService extends ChainService {
         const e = decodeHtlcBlock(block)
         if (e?.kind === 'create' && e.hashLock === hashLock && e.hash !== excludeId) return true
       }
-      const oldest = list.list[0]?.confirmationDetail?.momentumTimestamp ?? 0
-      if (oldest && oldest < sinceTime) return false
+      const oldest = list.list[0]?.confirmationDetail?.momentumTimestamp
+      if (oldest !== undefined && oldest < sinceTime) return false
       top = start - 1
     }
-    return false
+    // Reached the genesis of the HTLC chain: nothing older to check.
+    if (top <= 0) return false
+    throw new Error('Could not verify that the hashlock is unique; try again later')
   }
 
   create(

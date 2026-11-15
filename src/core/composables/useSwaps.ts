@@ -42,7 +42,7 @@ let timer: ReturnType<typeof setInterval> | null = null
 let reconciling = false
 /** Swap id -> time of the last auto-unlock attempt, so it isn't re-sent every scan. */
 const unlockAttempts = new Map<string, number>()
-const UNLOCK_RETRY_MS = 3 * 60_000
+const UNLOCK_RETRY_MS = 5 * 60_000 // longer than a send's timeout, so attempts don't stack
 
 const service = () => SwapService.getInstance()
 
@@ -50,9 +50,21 @@ async function readStore(): Promise<Store> {
   return (await storageService.get<Store>(STORAGE_KEY_SWAPS)) ?? {}
 }
 
-/** Read-modify-write of one chain's swaps, serialised. */
+const isOpen = (w: Swap) => w.state !== 'completed' && w.state !== 'unsuccessful'
+
+/**
+ * Serialise read-modify-write of the swap store across windows and tabs (the
+ * extension popup, a full tab, the web app in two tabs) with the Web Locks
+ * API, falling back to a per-window queue.
+ */
+function withStoreLock<T>(run: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined
+  return locks ? (locks.request('nom-wallet-htlc-swaps', run) as Promise<T>) : storeQueue(run)
+}
+
+/** Read-modify-write of one chain's swaps. Keep `change` fast: no node calls inside. */
 function updateChain(chainId: number, change: (c: ChainStore) => ChainStore | Promise<ChainStore>) {
-  return storeQueue(async () => {
+  return withStoreLock(async () => {
     const store = await readStore()
     const current = store[chainId] ?? { swaps: [], height: 0 }
     const next = await change(current)
@@ -63,13 +75,13 @@ function updateChain(chainId: number, change: (c: ChainStore) => ChainStore | Pr
   })
 }
 
-/** Key pair for an address of an unlocked wallet, or null. */
+/** Key pair for an address, from any unlocked wallet that holds it; null if none. */
 async function keyPairFor(address: string): Promise<KeyPair | null> {
   const { wallets } = await WalletService.getInstance().getSnapshot()
   for (const wallet of wallets) {
     const account = wallet.accounts.find((a) => a.address === address)
-    if (!account) continue
-    return sessionManager.getKeyStore(wallet.baseAddress)?.getKeyPair(account.index) ?? null
+    const keyStore = account ? sessionManager.getKeyStore(wallet.baseAddress) : null
+    if (account && keyStore) return keyStore.getKeyPair(account.index)
   }
   return null
 }
@@ -81,6 +93,8 @@ async function preimageFor(swap: Swap, keyPair: KeyPair): Promise<Uint8Array> {
     self: swap.self,
     hashLocked: swap.counterparty,
     expirationTime: swap.initialExpiration,
+    zts: swap.send.zts,
+    amount: swap.send.amount,
   })
   if (hashLockOf(preimage) !== swap.hashLock) throw new Error('The swap secret does not match this account')
   return preimage
@@ -96,21 +110,19 @@ async function reconcile(): Promise<void> {
   try {
     // Nothing open on any chain: no node calls at all.
     const stored = await readStore()
-    const anyOpen = Object.values(stored).some((c) =>
-      c.swaps.some((w) => !['completed', 'unsuccessful'].includes(w.state))
-    )
-    if (!anyOpen) return
+    if (!Object.values(stored).some((c) => c.swaps.some(isOpen))) return
     const s = service()
-    const [chainId, now, height] = await Promise.all([s.chainId(), s.now(), s.htlcHeight()])
+    const [chainId, now, top] = await Promise.all([s.chainId(), s.now(), s.htlcHeight()])
     chainNow.value = now
-    const next = await updateChain(chainId, async (c) => {
-      const open = c.swaps.some((w) => !['completed', 'unsuccessful'].includes(w.state))
-      if (!open) return { ...c, height }
-      const { events, height: scanned } = await s.eventsSince(c.height, height)
+    const before = stored[chainId] ?? { swaps: [], height: 0 }
+    const openHere = before.swaps.some(isOpen)
+    // Scan outside the store lock (it can take a while), then merge.
+    const scan = openHere ? await s.eventsSince(before.height, top) : { events: [], height: top }
+    const next = await updateChain(chainId, (c) => {
       let list = c.swaps
-      for (const e of events) list = list.map((w) => applyHtlcEvent(w, e))
+      for (const e of scan.events) list = list.map((w) => applyHtlcEvent(w, e))
       list = list.map((w) => expireSwap(w, now))
-      return { swaps: list, height: scanned }
+      return { swaps: list, height: Math.max(c.height, scan.height) }
     })
     for (const swap of next.swaps) {
       if (nextAction(swap, now) === 'auto-unlock') await autoUnlock(swap)
@@ -190,7 +202,14 @@ export function useSwaps() {
       while (known.some((w) => w.direction === 'outgoing' && w.counterparty === counterparty && w.initialExpiration === expirationTime)) {
         expirationTime++
       }
-      const preimage = await derivePreimage(keyPair.getPrivateKey(), { chainId, self, hashLocked: counterparty, expirationTime })
+      const preimage = await derivePreimage(keyPair.getPrivateKey(), {
+        chainId,
+        self,
+        hashLocked: counterparty,
+        expirationTime,
+        zts: send.zts,
+        amount: send.amount,
+      })
       const hashLock = hashLockOf(preimage)
       const block = await TransactionService.getInstance().sendEmbeddedContractBlock(
         s.create(send.zts, BigInt(send.amount), counterparty, expirationTime, hashLock),
@@ -212,7 +231,8 @@ export function useSwaps() {
       }
       await updateChain(chainId, (c) => ({
         swaps: [swap, ...c.swaps],
-        height: c.height || Math.max(0, height - 1),
+        // Nothing open on this chain: the old height is stale, start scanning here.
+        height: c.swaps.some(isOpen) ? c.height : Math.max(0, height - 1),
       }))
       return swap
     })
@@ -267,7 +287,10 @@ export function useSwaps() {
         receive: candidate.receive,
         hashLock: htlc.hashLock,
       }
-      await updateChain(chainId, (c) => ({ swaps: [swap, ...c.swaps], height: c.height || Math.max(0, height - 1) }))
+      await updateChain(chainId, (c) => ({
+        swaps: [swap, ...c.swaps],
+        height: c.swaps.some(isOpen) ? c.height : Math.max(0, height - 1),
+      }))
       return swap
     })
   }
@@ -290,11 +313,24 @@ export function useSwaps() {
       const s = service()
       const counter = await s.getHtlc(counterId)
       if (!counter) throw new Error('The counterparty’s deposit is gone (reclaimed or already unlocked)')
-      if (counter.expirationTime - (await s.now()) <= MIN_SAFE_TIME_TO_COMPLETE) {
-        throw new Error('The counterparty’s deposit expires too soon to complete safely')
-      }
+      const chainTime = await s.now()
+      const deadline = counter.expirationTime - MIN_SAFE_TIME_TO_COMPLETE
+      if (chainTime >= deadline) throw new Error('The counterparty’s deposit expires too soon to complete safely')
       const preimage = await preimageFor(swap, keyPair)
-      const block = await TransactionService.getInstance().sendEmbeddedContractBlock(s.unlock(counterId, preimage), keyPair)
+      // The unlock reveals the preimage even if it arrives too late. The send can
+      // wait in the queue and on PoW, so check the deadline again right before
+      // publishing (chain time estimated from the local clock).
+      const offset = chainTime - Math.floor(Date.now() / 1000)
+      const beforePublish = () => {
+        if (Math.floor(Date.now() / 1000) + offset >= deadline) {
+          throw new Error('Too close to the counterparty’s expiry; not completing (your secret was not published)')
+        }
+      }
+      const block = await TransactionService.getInstance().sendEmbeddedContractBlock(
+        s.unlock(counterId, preimage),
+        keyPair,
+        beforePublish
+      )
       trackTransaction(`Complete swap: ${swap.receive?.symbol ?? ''}`.trim(), block)
     })
     void reconcile()

@@ -58,7 +58,14 @@ describe.skipIf(!A || !B)('testnet: HTLC swap between two wallets', () => {
     const startHeight = await s.htlcHeight()
     const now = await s.now()
     const expiration = now + INITIAL_HTLC_DURATION
-    const preimage = await derivePreimage(a.getPrivateKey(), { chainId: CHAIN_ID, self: addrA, hashLocked: addrB, expirationTime: expiration })
+    const preimage = await derivePreimage(a.getPrivateKey(), {
+      chainId: CHAIN_ID,
+      self: addrA,
+      hashLocked: addrB,
+      expirationTime: expiration,
+      zts: ZNN_ZTS.toString(),
+      amount: '1000000',
+    })
     const hashLock = hashLockOf(preimage)
     const initial = await zenon.send(s.create(ZNN_ZTS.toString(), 1_000_000n, addrB, expiration, hashLock), a)
     const initialId = initial.hash.toString()

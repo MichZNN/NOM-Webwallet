@@ -80,7 +80,14 @@ const hex = (bytes: Uint8Array) => Buffer.from(bytes).toString('hex')
  */
 export async function derivePreimage(
   privateKey: Uint8Array,
-  ctx: { chainId: number; self: string; hashLocked: string; expirationTime: number }
+  ctx: {
+    chainId: number
+    self: string
+    hashLocked: string
+    expirationTime: number
+    zts: string
+    amount: string
+  }
 ): Promise<Uint8Array> {
   const key = await crypto.subtle.importKey(
     'raw',
@@ -90,7 +97,7 @@ export async function derivePreimage(
     ['sign']
   )
   const message = new TextEncoder().encode(
-    `nom-htlc-v1|${ctx.chainId}|${ctx.self}|${ctx.hashLocked}|${ctx.expirationTime}`
+    `nom-htlc-v1|${ctx.chainId}|${ctx.self}|${ctx.hashLocked}|${ctx.expirationTime}|${ctx.zts}|${ctx.amount}`
   )
   return new Uint8Array(await crypto.subtle.sign('HMAC', key, message))
 }
@@ -169,6 +176,8 @@ export type HtlcEvent =
       hashType: number
       keyMaxSize: number
       hashLock: string
+      /** The contract rejected the Create and refunded it (no HTLC exists). */
+      failed: boolean
     }
   | { kind: 'unlock'; id: string; preimage: string; executed: boolean }
   | { kind: 'reclaim'; id: string; executed: boolean }
@@ -176,6 +185,7 @@ export type HtlcEvent =
 /** Initiator's checks on a counter HTLC (Syrius htlc_swaps_handler _isValidCounterHtlc). */
 export function isValidCounterHtlc(swap: Swap, e: Extract<HtlcEvent, { kind: 'create' }>): boolean {
   return (
+    !e.failed &&
     e.hashLock === swap.hashLock &&
     e.hashLocked === swap.self &&
     e.creator === swap.counterparty &&
@@ -190,12 +200,12 @@ export function applyHtlcEvent(swap: Swap, e: HtlcEvent): Swap {
   if (swap.state === 'completed' || swap.state === 'unsuccessful') return swap
   switch (e.kind) {
     case 'create': {
-      // Our own HTLC was received by the contract.
-      if (e.hash === swap.initialHtlcId && swap.direction === 'outgoing' && swap.state === 'pending') {
-        return { ...swap, state: 'active' }
-      }
-      if (e.hash === swap.counterHtlcId && swap.direction === 'incoming' && swap.state === 'pending') {
-        return { ...swap, state: 'active' }
+      // Our own HTLC was received by the contract (or rejected and refunded).
+      const ownCreate =
+        (e.hash === swap.initialHtlcId && swap.direction === 'outgoing') ||
+        (e.hash === swap.counterHtlcId && swap.direction === 'incoming')
+      if (ownCreate && swap.state === 'pending') {
+        return { ...swap, state: e.failed ? 'unsuccessful' : 'active' }
       }
       // The counterparty's answer to our swap.
       if (
@@ -221,9 +231,11 @@ export function applyHtlcEvent(swap: Swap, e: HtlcEvent): Swap {
         return { ...swap, state: 'completed' }
       }
       if (e.id === swap.counterHtlcId && swap.direction === 'incoming') {
-        // The initiator took our deposit and revealed the preimage.
+        // The initiator took our deposit and revealed the preimage. This can
+        // happen until our deposit's expiry, also after we marked the swap
+        // as expired: claim the initial HTLC right away.
         if (hashLockOf(Buffer.from(e.preimage, 'hex')) !== swap.hashLock) return swap
-        return { ...swap, revealedPreimage: e.preimage }
+        return { ...swap, state: 'active', revealedPreimage: e.preimage }
       }
       if (e.id === swap.initialHtlcId && swap.direction === 'incoming') {
         return { ...swap, state: 'completed', revealedPreimage: swap.revealedPreimage ?? e.preimage }
@@ -248,10 +260,9 @@ export function ownHtlc(swap: Swap): { id?: string; expiration?: number } {
 /** Mark swaps that can no longer complete safely (Syrius _checkForExpiredSwaps). */
 export function expireSwap(swap: Swap, now: number): Swap {
   if (swap.state !== 'pending' && swap.state !== 'active') return swap
-  // An incoming swap whose preimage is known can still complete until the initial HTLC expires.
-  if (swap.direction === 'incoming' && swap.revealedPreimage) {
-    return now >= swap.initialExpiration - MIN_SAFE_TIME_TO_COMPLETE ? { ...swap, state: 'reclaimable' } : swap
-  }
+  // Incoming with the preimage known: our deposit is already taken, so there is
+  // nothing to reclaim; keep trying to claim the initial HTLC until it expires.
+  if (swap.direction === 'incoming' && swap.revealedPreimage) return swap
   const counterTooLate =
     swap.counterExpiration !== undefined && now >= swap.counterExpiration - MIN_SAFE_TIME_TO_COMPLETE
   if (now >= swap.initialExpiration || counterTooLate) return { ...swap, state: 'reclaimable' }
@@ -263,13 +274,15 @@ export function nextAction(
   swap: Swap,
   now: number
 ): 'confirm-counter' | 'complete' | 'auto-unlock' | 'reclaim' | 'wait-reclaim' | null {
+  // The contract accepts an unlock until the expiry itself: keep trying.
+  if (swap.direction === 'incoming' && swap.revealedPreimage) {
+    const open = swap.state !== 'completed' && swap.state !== 'unsuccessful'
+    return open && now < swap.initialExpiration ? 'auto-unlock' : null
+  }
   if (swap.state === 'active') {
     if (swap.direction === 'outgoing' && swap.counterHtlcId && swap.counterExpiration !== undefined) {
       if (now >= swap.counterExpiration - MIN_SAFE_TIME_TO_COMPLETE) return null
       return swap.counterConfirmed ? 'complete' : 'confirm-counter'
-    }
-    if (swap.direction === 'incoming' && swap.revealedPreimage) {
-      return now < swap.initialExpiration - MIN_SAFE_TIME_TO_COMPLETE ? 'auto-unlock' : null
     }
     return null
   }

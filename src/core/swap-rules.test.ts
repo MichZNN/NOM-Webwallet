@@ -51,11 +51,12 @@ const create = (o: Partial<Extract<HtlcEvent, { kind: 'create' }>> = {}): HtlcEv
   hashType: 0,
   keyMaxSize: 255,
   hashLock: LOCK,
+  failed: false,
   ...o,
 })
 
 describe('derivePreimage', () => {
-  const ctx = { chainId: 1, self: ME, hashLocked: THEM, expirationTime: NOW }
+  const ctx = { chainId: 1, self: ME, hashLocked: THEM, expirationTime: NOW, zts: 'zts1znn', amount: '100' }
 
   it('is deterministic, 32 bytes, and differs per swap and per key', async () => {
     const a = await derivePreimage(KEY, ctx)
@@ -63,6 +64,8 @@ describe('derivePreimage', () => {
     expect(toHex(await derivePreimage(KEY, ctx))).toBe(toHex(a))
     expect(toHex(await derivePreimage(KEY, { ...ctx, expirationTime: NOW + 1 }))).not.toBe(toHex(a))
     expect(toHex(await derivePreimage(KEY, { ...ctx, chainId: 73404 }))).not.toBe(toHex(a))
+    expect(toHex(await derivePreimage(KEY, { ...ctx, amount: '101' }))).not.toBe(toHex(a))
+    expect(toHex(await derivePreimage(KEY, { ...ctx, zts: 'zts1qsr' }))).not.toBe(toHex(a))
     expect(toHex(await derivePreimage(new Uint8Array(32).fill(8), ctx))).not.toBe(toHex(a))
   })
 
@@ -152,7 +155,7 @@ describe('outgoing swap', () => {
 
 describe('incoming swap', () => {
   it('learns the preimage from the unlock of its counter HTLC and completes', async () => {
-    const preimage = await derivePreimage(KEY, { chainId: 1, self: THEM, hashLocked: ME, expirationTime: NOW })
+    const preimage = await derivePreimage(KEY, { chainId: 1, self: THEM, hashLocked: ME, expirationTime: NOW, zts: 'zts1znn', amount: '100' })
     const lock = hashLockOf(preimage)
     let s: Swap = {
       ...outgoing({ direction: 'incoming', counterparty: THEM, hashLock: lock, state: 'pending' }),
@@ -173,5 +176,38 @@ describe('incoming swap', () => {
 
     s = applyHtlcEvent(s, { kind: 'unlock', id: 'h-init', preimage: toHex(preimage), executed: true })
     expect(s.state).toBe('completed')
+  })
+})
+
+describe('review fixes', () => {
+  it('ignores a counter HTLC the contract rejected', () => {
+    expect(applyHtlcEvent(outgoing(), create({ failed: true })).counterHtlcId).toBeUndefined()
+  })
+
+  it('marks our own rejected Create as unsuccessful', () => {
+    const s = applyHtlcEvent(outgoing({ state: 'pending' }), create({ hash: 'h-init', creator: ME, hashLocked: THEM, failed: true }))
+    expect(s.state).toBe('unsuccessful')
+  })
+
+  it('still claims when the initiator completes in the last minutes of our deposit', async () => {
+    const preimage = new Uint8Array(32).fill(9)
+    const lock = hashLockOf(preimage)
+    const counterExpiration = NOW + COUNTER_HTLC_DURATION
+    let s: Swap = {
+      ...outgoing({ direction: 'incoming', hashLock: lock }),
+      counterHtlcId: 'h-counter',
+      counterExpiration,
+    }
+    // 5 minutes before our deposit expires the wallet already calls it expired...
+    s = expireSwap(s, counterExpiration - 300)
+    expect(s.state).toBe('reclaimable')
+    // ...but the initiator can still unlock it, which reveals the preimage.
+    s = applyHtlcEvent(s, { kind: 'unlock', id: 'h-counter', preimage: toHex(preimage), executed: true })
+    expect(s.state).toBe('active')
+    expect(nextAction(s, counterExpiration + 3600)).toBe('auto-unlock')
+    // It keeps trying until the initial HTLC itself expires, and never asks to reclaim.
+    expect(expireSwap(s, s.initialExpiration - 1).state).toBe('active')
+    expect(nextAction(s, s.initialExpiration - 1)).toBe('auto-unlock')
+    expect(nextAction(s, s.initialExpiration)).toBeNull()
   })
 })
