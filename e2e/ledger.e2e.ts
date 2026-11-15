@@ -37,7 +37,10 @@ async function connectLedger(page: Page) {
 
 async function sendZnn(page: Page, amount: string) {
   await page.getByRole('button', { name: /Send/ }).first().click()
-  await page.getByText('ZNN', { exact: true }).first().click()
+  // Wait for the token step of the Send page, then pick ZNN from its list.
+  await expect(page.getByRole('heading', { name: 'Select Token to Send' })).toBeVisible({ timeout: 30_000 })
+  await page.getByRole('main').getByText('ZNN', { exact: true }).first().click()
+  await expect(page.locator('#recipient')).toBeVisible({ timeout: 30_000 })
   await page.locator('#recipient').fill(OTHER_ADDRESS)
   await page.locator('#amount').fill(amount)
   await page.getByRole('button', { name: /^Send/ }).last().click()
