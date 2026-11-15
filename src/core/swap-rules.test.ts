@@ -9,6 +9,7 @@ import {
   hashLockOf,
   initialHtlcError,
   nextAction,
+  recoverSwaps,
   toHex,
   type HtlcEvent,
   type HtlcLike,
@@ -209,5 +210,43 @@ describe('review fixes', () => {
     expect(expireSwap(s, s.initialExpiration - 1).state).toBe('active')
     expect(nextAction(s, s.initialExpiration - 1)).toBe('auto-unlock')
     expect(nextAction(s, s.initialExpiration)).toBeNull()
+  })
+})
+
+describe('recoverSwaps', () => {
+  const ctx = { self: ME, chainId: 1, now: NOW + 600 }
+  const myInitial = create({ hash: 'h-init', creator: ME, hashLocked: THEM, expirationTime: NOW + INITIAL_HTLC_DURATION, zts: 'zts1znn', symbol: 'ZNN', amount: '100' })
+
+  it('rebuilds a started swap and finds the counter deposit made since', () => {
+    const counter = create({ hash: 'h-counter' })
+    const [swap] = recoverSwaps(ctx, [{ create: myInitial as never, initiated: true }], [myInitial, counter])
+    expect(swap).toMatchObject({
+      direction: 'outgoing',
+      state: 'active',
+      counterparty: THEM,
+      initialHtlcId: 'h-init',
+      counterHtlcId: 'h-counter',
+      send: { amount: '100', symbol: 'ZNN' },
+      receive: { amount: '500', symbol: 'QSR' },
+    })
+    expect(swap.counterConfirmed).toBeUndefined() // the user reviews it again
+  })
+
+  it('rebuilds a joined swap, including a preimage revealed meanwhile', async () => {
+    const preimage = new Uint8Array(32).fill(5)
+    const lock = hashLockOf(preimage)
+    const theirs = create({ hash: 'h-init', creator: THEM, hashLocked: ME, hashLock: lock, expirationTime: NOW + INITIAL_HTLC_DURATION })
+    const mine = create({ hash: 'h-counter', creator: ME, hashLocked: THEM, hashLock: lock, expirationTime: NOW + COUNTER_HTLC_DURATION, zts: 'zts1znn', symbol: 'ZNN' })
+    const reveal: HtlcEvent = { kind: 'unlock', id: 'h-counter', preimage: toHex(preimage), executed: true }
+    const [swap] = recoverSwaps(ctx, [{ create: mine as never, initiated: false }], [theirs, mine, reveal])
+    expect(swap).toMatchObject({ direction: 'incoming', id: 'h-init', counterHtlcId: 'h-counter', revealedPreimage: toHex(preimage) })
+    expect(nextAction(swap, ctx.now)).toBe('auto-unlock')
+  })
+
+  it('drops finished swaps and counter deposits without a matching initial', () => {
+    const done: HtlcEvent = { kind: 'reclaim', id: 'h-init', executed: true }
+    expect(recoverSwaps(ctx, [{ create: myInitial as never, initiated: true }], [myInitial, done])).toEqual([])
+    const orphan = create({ hash: 'h-x', creator: ME, hashLocked: THEM })
+    expect(recoverSwaps(ctx, [{ create: orphan as never, initiated: false }], [orphan])).toEqual([])
   })
 })

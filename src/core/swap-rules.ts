@@ -295,3 +295,75 @@ export function nextAction(
 }
 
 export { hex as toHex }
+
+/** How far back recovery looks: the longest a swap can still be open. */
+export const RECOVERY_WINDOW = MAX_INITIAL_HTLC_DURATION + HOUR
+
+export type CreateEvent = Extract<HtlcEvent, { kind: 'create' }>
+
+/**
+ * Rebuild swap records from the chain alone (after browser storage was
+ * cleared): our own HTLC Create calls plus the HTLC contract's events in the
+ * same window, oldest first. `initiated` tells whether a Create was a swap we
+ * started (its hashlock opens with our derived preimage) or a counter deposit
+ * we made when joining someone's swap. Returns the swaps that are still open.
+ */
+export function recoverSwaps(
+  ctx: { self: string; chainId: number; now: number },
+  own: Array<{ create: CreateEvent; initiated: boolean }>,
+  events: HtlcEvent[]
+): Swap[] {
+  const result: Swap[] = []
+  for (const { create, initiated } of own) {
+    if (create.chainId !== ctx.chainId) continue
+    const send = { amount: create.amount, zts: create.zts, symbol: create.symbol, decimals: create.decimals }
+    let swap: Swap | null = null
+    if (initiated) {
+      swap = {
+        id: create.hash,
+        chainId: ctx.chainId,
+        direction: 'outgoing',
+        self: ctx.self,
+        counterparty: create.hashLocked,
+        state: 'pending',
+        startTime: create.expirationTime - INITIAL_HTLC_DURATION,
+        initialHtlcId: create.hash,
+        initialExpiration: create.expirationTime,
+        send,
+        hashLock: create.hashLock,
+      }
+    } else {
+      // Our counter deposit: find the initial HTLC it answered.
+      const initial = events.find(
+        (e): e is CreateEvent =>
+          e.kind === 'create' &&
+          !e.failed &&
+          e.hash !== create.hash &&
+          e.hashLock === create.hashLock &&
+          e.hashLocked === ctx.self &&
+          e.creator === create.hashLocked
+      )
+      if (!initial) continue
+      swap = {
+        id: initial.hash,
+        chainId: ctx.chainId,
+        direction: 'incoming',
+        self: ctx.self,
+        counterparty: initial.creator,
+        state: 'pending',
+        startTime: create.expirationTime - COUNTER_HTLC_DURATION,
+        initialHtlcId: initial.hash,
+        initialExpiration: initial.expirationTime,
+        counterHtlcId: create.hash,
+        counterExpiration: create.expirationTime,
+        send,
+        receive: { amount: initial.amount, zts: initial.zts, symbol: initial.symbol, decimals: initial.decimals },
+        hashLock: create.hashLock,
+      }
+    }
+    for (const e of events) swap = applyHtlcEvent(swap, e)
+    swap = expireSwap(swap, ctx.now)
+    if (swap.state !== 'completed' && swap.state !== 'unsuccessful') result.push(swap)
+  }
+  return result
+}

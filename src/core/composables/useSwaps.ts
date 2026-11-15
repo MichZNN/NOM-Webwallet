@@ -5,6 +5,7 @@ import {sessionManager} from '../session-manager'
 import {storageService} from '../storage/storage-service'
 import {createSerialQueue} from '../serial-queue'
 import {SwapService} from '../swap-service'
+import {recoverAccountSwaps} from '../swap-recovery'
 import {
   COUNTER_HTLC_DURATION,
   INITIAL_HTLC_DURATION,
@@ -348,9 +349,32 @@ export function useSwaps() {
     void reconcile()
   }
 
+  /**
+   * Find this account's open swaps on chain (e.g. after browser data was
+   * cleared) and add the ones not tracked yet. Needs the unlocked wallet: the
+   * account key tells our own swaps apart. Returns how many were added.
+   */
+  async function recover(self: string): Promise<number> {
+    const found = await withKey(self, 'Looking for your swaps on chain', (keyPair) =>
+      recoverAccountSwaps(service(), self, keyPair.getPrivateKey())
+    )
+    let added = 0
+    await updateChain(found.chainId, (c) => {
+      const fresh = found.swaps.filter((w) => !c.swaps.some((x) => x.id === w.id))
+      added = fresh.length
+      if (!fresh.length) return c
+      // Events up to found.height are already applied to the recovered swaps.
+      const height = c.swaps.some(isOpen) ? Math.min(c.height, found.height) : found.height
+      return { swaps: [...fresh, ...c.swaps], height }
+    })
+    void reconcile()
+    return added
+  }
+
   return {
     swaps,
     chainNow,
+    recover,
     isBusy,
     error,
     start,

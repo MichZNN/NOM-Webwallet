@@ -145,6 +145,21 @@ async function submitJoin() {
   }
 }
 
+// --- Recovery ---
+const recovering = ref(false)
+async function recover() {
+  if (!self.value || needsUnlock()) return
+  recovering.value = true
+  try {
+    const added = await sw.recover(self.value)
+    toast.show(added ? `Recovered ${added} swap${added === 1 ? '' : 's'}` : 'No other open swaps found', 'success')
+  } catch (err) {
+    toast.show(err instanceof Error ? err.message : 'Recovery failed', 'error')
+  } finally {
+    recovering.value = false
+  }
+}
+
 // --- Swap list ---
 const stateLabel: Record<Swap['state'], string> = {
   pending: 'Publishing',
@@ -243,6 +258,13 @@ function describe(s: Swap): string {
           </div>
         </CardContent>
       </Card>
+
+      <div class="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm">
+        <span>Cleared your browser data or using another device? Find this account's open swaps on chain.</span>
+        <Button size="sm" variant="outline" :disabled="recovering || sw.isBusy.value" @click="recover">
+          {{ recovering ? 'Searching…' : 'Recover swaps' }}
+        </Button>
+      </div>
 
       <!-- Start -->
       <Card>

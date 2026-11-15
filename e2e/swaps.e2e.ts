@@ -111,3 +111,12 @@ test.describe('refuses unsafe deposits', () => {
     })
   }
 })
+
+test('recovery reports when there is nothing to recover', async ({ page }) => {
+  const mock = node()
+  await mock.attach(page)
+  await openSwaps(page)
+  await page.getByRole('button', { name: 'Recover swaps' }).click()
+  await expect(page.getByText('No other open swaps found')).toBeVisible({ timeout: 30_000 })
+  expect(mock.published).toHaveLength(0)
+})

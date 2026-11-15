@@ -2,13 +2,41 @@ import {Address, Hash, HTLC_ADDRESS, HtlcContract, TokenStandard} from 'znn-type
 import type {AccountBlock, AccountBlockTemplate} from 'znn-typescript-sdk'
 import {ChainService} from './chain-service'
 import {HASH_TYPE_SHA3, KEY_MAX_SIZE} from './swap-rules'
-import type {HtlcEvent, HtlcLike} from './swap-rules'
+import type {CreateEvent, HtlcEvent, HtlcLike} from './swap-rules'
 
+const USER_SEND = 2
 const CONTRACT_RECEIVE = 5
 const PAGE = 100
 
 const toHex = (data: Uint8Array) => Buffer.from(data).toString('hex')
 const strip0x = (v: unknown) => String(v).replace(/^0x/, '').toLowerCase()
+
+/** Decode a send block that calls HTLC Create; `failed` is filled in by the caller. */
+function decodeCreateSend(send: AccountBlock, failed: boolean): CreateEvent | null {
+  let args: unknown[]
+  try {
+    args = HtlcContract.abi.decodeFunctionData('Create', `0x${toHex(send.data)}`) as unknown[]
+  } catch {
+    return null
+  }
+  const [hashLocked, expirationTime, hashType, keyMaxSize, hashLock] = args
+  return {
+    kind: 'create',
+    hash: send.hash.toString(),
+    creator: send.address.toString(),
+    chainId: send.chainIdentifier,
+    zts: send.tokenStandard.toString(),
+    symbol: send.token?.symbol ?? '?',
+    decimals: send.token?.decimals ?? 8,
+    amount: send.amount.toString(),
+    hashLocked: String(hashLocked),
+    expirationTime: Number(expirationTime),
+    hashType: Number(hashType),
+    keyMaxSize: Number(keyMaxSize),
+    hashLock: strip0x(hashLock),
+    failed,
+  }
+}
 
 /**
  * Decode the HTLC contract's receive block into the call it executed.
@@ -27,27 +55,9 @@ export function decodeHtlcBlock(block: AccountBlock): HtlcEvent | null {
       return null
     }
   }
-  const created = tryDecode('Create')
-  if (created) {
-    const [hashLocked, expirationTime, hashType, keyMaxSize, hashLock] = created
-    return {
-      kind: 'create',
-      hash: send.hash.toString(),
-      creator: send.address.toString(),
-      chainId: send.chainIdentifier,
-      zts: send.tokenStandard.toString(),
-      symbol: send.token?.symbol ?? '?',
-      decimals: send.token?.decimals ?? 8,
-      amount: send.amount.toString(),
-      hashLocked: String(hashLocked),
-      expirationTime: Number(expirationTime),
-      hashType: Number(hashType),
-      keyMaxSize: Number(keyMaxSize),
-      hashLock: strip0x(hashLock),
-      // A rejected Create is refunded by a follow-on block; a good one has none.
-      failed: (block.descendantBlocks?.length ?? 0) > 0,
-    }
-  }
+  // A rejected Create is refunded by a follow-on block; a good one has none.
+  const created = decodeCreateSend(send, executed)
+  if (created) return created
   const unlocked = tryDecode('Unlock')
   if (unlocked) {
     return { kind: 'unlock', id: strip0x(unlocked[0]), preimage: strip0x(unlocked[1]), executed }
@@ -158,6 +168,50 @@ export class SwapService extends ChainService {
     // Reached the genesis of the HTLC chain: nothing older to check.
     if (top <= 0) return false
     throw new Error('Could not verify that the hashlock is unique; try again later')
+  }
+
+  /**
+   * HTLC Create calls this address made since `sinceTime`, newest first
+   * (unconfirmed ones included). Used to recover swaps after storage loss.
+   */
+  async ownCreatesSince(address: string, sinceTime: number): Promise<CreateEvent[]> {
+    await this.ensureInitialized()
+    const found: CreateEvent[] = []
+    const htlc = HTLC_ADDRESS.toString()
+    for (let page = 0; page < 50; page++) {
+      const list = await this.zenon.ledger.getAccountBlocksByPage(Address.parse(address), page, PAGE)
+      for (const block of list.list) {
+        const time = block.confirmationDetail?.momentumTimestamp
+        if (time !== undefined && time < sinceTime) return found
+        if (block.blockType !== USER_SEND || block.toAddress.toString() !== htlc) continue
+        const create = decodeCreateSend(block, false)
+        if (create) found.push(create)
+      }
+      if (list.list.length < PAGE) break
+    }
+    return found
+  }
+
+  /** HTLC contract events since `sinceTime`, oldest first, and the height they end at. */
+  async eventsInWindow(sinceTime: number): Promise<{ events: HtlcEvent[]; height: number }> {
+    await this.ensureInitialized()
+    const height = await this.htlcHeight()
+    const pages: HtlcEvent[][] = []
+    let top = height
+    for (let n = 0; top > 0 && n < 200; n++) {
+      const start = Math.max(1, top - PAGE + 1)
+      const list = await this.zenon.ledger.getAccountBlocksByHeight(HTLC_ADDRESS, start, top - start + 1)
+      const page: HtlcEvent[] = []
+      for (const block of list.list) {
+        const e = decodeHtlcBlock(block)
+        if (e) page.push(e)
+      }
+      pages.unshift(page)
+      const oldest = list.list[0]?.confirmationDetail?.momentumTimestamp
+      if (oldest !== undefined && oldest < sinceTime) break
+      top = start - 1
+    }
+    return { events: pages.flat(), height }
   }
 
   create(

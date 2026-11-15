@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { AccountBlockTemplate, KeyStore, QSR_ZTS, Zenon, ZNN_ZTS } from 'znn-typescript-sdk'
 import type { KeyPair } from 'znn-typescript-sdk'
 import { SwapService } from '@/core/swap-service'
+import { recoverAccountSwaps } from '@/core/swap-recovery'
 import {
   COUNTER_HTLC_DURATION,
   INITIAL_HTLC_DURATION,
@@ -106,6 +107,13 @@ describe.skipIf(!A || !B)('testnet: HTLC swap between two wallets', () => {
     }, (w) => !!w.counterHtlcId)
     expect(swapA.counterHtlcId).toBe(counter.hash.toString())
     expect(swapA.receive).toMatchObject({ amount: '10000000', zts: QSR_ZTS.toString() })
+
+    // --- Both sides can rebuild the swap from the chain alone ---
+    const recoveredA = (await recoverAccountSwaps(s, addrA, a.getPrivateKey())).swaps.find((w) => w.id === initialId)
+    expect(recoveredA).toMatchObject({ direction: 'outgoing', state: 'active', counterHtlcId: counter.hash.toString() })
+    const recoveredB = (await recoverAccountSwaps(s, addrB, b.getPrivateKey())).swaps.find((w) => w.id === initialId)
+    expect(recoveredB).toMatchObject({ direction: 'incoming', counterHtlcId: counter.hash.toString(), hashLock })
+
     swapA = { ...swapA, counterConfirmed: true }
     expect(nextAction(swapA, await s.now())).toBe('complete')
     await zenon.send(s.unlock(counter.hash.toString(), preimage), a)
@@ -120,6 +128,9 @@ describe.skipIf(!A || !B)('testnet: HTLC swap between two wallets', () => {
     }, (w) => !!w.revealedPreimage)
     expect(swapB.revealedPreimage).toBe(toHex(preimage))
     expect(nextAction(swapB, await s.now())).toBe('auto-unlock')
+    // A wiped joiner still learns the secret from the chain.
+    const afterReveal = (await recoverAccountSwaps(s, addrB, b.getPrivateKey())).swaps.find((w) => w.id === initialId)
+    expect(afterReveal?.revealedPreimage).toBe(toHex(preimage))
     await zenon.send(s.unlock(initialId, Buffer.from(swapB.revealedPreimage ?? '', 'hex')), b)
 
     // --- Both deposits are gone and both swaps read as completed ---
