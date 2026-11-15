@@ -6,6 +6,7 @@ import {
   onTxProgress,
   resumeTracking,
   useAccount,
+  useAutoReceive,
   useNetwork,
   useUnlockTarget,
   useWallet,
@@ -57,6 +58,7 @@ onTxProgress((tx) => {
   if (tx.address === wallet.activeAccountAddress.value) void account.loadAccountData()
 })
 const network = useNetwork()
+const autoReceive = useAutoReceive()
 const walletConnect = useWalletConnect()
 
 // Global unlock dialog state
@@ -102,6 +104,9 @@ onMounted(async () => {
       await account.loadAccountData()
     }
   }
+
+  // Receives for unlocked accounts only, so it's idle until a wallet is unlocked.
+  void autoReceive.start()
 
   // The extension's WalletConnect tab initializes itself instead (§1.8) — the
   // popup and the approval window never load the WalletConnect stack.

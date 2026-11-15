@@ -53,6 +53,15 @@ export class TransactionService extends ChainService {
     return this.publish(receiveBlock, keyPair)
   }
 
+  // Receive without the send overlay (auto-receive). Still goes through the
+  // send queue, so it never races a user's send on the same frontier.
+  async receiveInBackground(blockHash: string, keyPair: KeyPair): Promise<AccountBlockTemplate> {
+    await this.ensureInitialized()
+    const receiveBlock = AccountBlockTemplate.receive(Hash.parse(blockHash))
+
+    return this.publish(receiveBlock, keyPair, undefined, false)
+  }
+
   // Send an embedded contract block (for rewards, staking, etc).
   // `beforePublish` runs after PoW and signing, right before the block is
   // published. Throwing from it stops the publish.
@@ -76,9 +85,10 @@ export class TransactionService extends ChainService {
   private publish(
     block: AccountBlockTemplate,
     keyPair: KeyPair,
-    beforePublish?: () => void
+    beforePublish?: () => void,
+    showOverlay = true
   ): Promise<AccountBlockTemplate> {
-    return holdSendLock(() =>
+    const send = () =>
       this.sendQueue(() =>
         withTimeout(
           (async () => {
@@ -91,6 +101,6 @@ export class TransactionService extends ChainService {
           SEND_TIMEOUT_MESSAGE
         )
       )
-    )
+    return showOverlay ? holdSendLock(send) : send()
   }
 }

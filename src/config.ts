@@ -136,6 +136,11 @@ export const DELIVERED_OUTCOME_TTL_MS = 60 * 1000
 /** App.vue — the extension's WalletConnect popup window, reused across opens. */
 export const SESSION_KEY_WALLETCONNECT_WINDOW_ID = 'nom-wallet.walletConnectWindowId'
 
+/** useAutoReceive.ts. Storage key for the auto-receive on/off setting (default on). */
+export const STORAGE_KEY_AUTO_RECEIVE = 'nom-wallet-auto-receive'
+/** useAutoReceive.ts. Gap between two checks for incoming transactions. */
+export const AUTO_RECEIVE_POLL_MS = 15_000
+
 /** tx-tracker.ts. Storage key for the transactions still being tracked. */
 export const STORAGE_KEY_TRACKED_TRANSACTIONS = 'nom-wallet-tracked-transactions'
 /** tx-tracker.ts. Gap between two reads of a tracked transaction, and the cap on one read. */

@@ -7,6 +7,7 @@ import ExportMnemonicDialog from './ExportMnemonicDialog.vue'
 import ChangePasswordDialog from './ChangePasswordDialog.vue'
 import NetworkSelector from './NetworkSelector.vue'
 import {useConnectedSites} from '@/core/composables/useConnectedSites'
+import {useAutoReceive} from '@/core'
 import {
   Button,
   Dialog,
@@ -22,6 +23,7 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  Switch,
   useTheme,
 } from 'nom-ui'
 import {MonitorIcon, MoonIcon, SettingsIcon, SunIcon} from 'lucide-vue-next'
@@ -124,6 +126,8 @@ function handleExportMnemonicRequest(address: string) {
   }
 }
 
+const autoReceive = useAutoReceive()
+
 // Change password dialog state
 const changePasswordTarget = ref<{ address: string; name: string } | null>(null)
 
@@ -175,6 +179,20 @@ defineExpose({
         </TabsList>
 
         <TabsContent value="wallet">
+          <label class="mb-4 flex items-center justify-between gap-4 rounded-md border p-3">
+            <span>
+              <span class="block text-sm font-medium">Auto-receive</span>
+              <span class="block text-xs text-muted-foreground">
+                Automatically receive incoming transactions for unlocked wallets while the wallet
+                is open
+              </span>
+            </span>
+            <Switch
+              :model-value="autoReceive.enabled.value"
+              @update:model-value="(v: boolean) => autoReceive.setEnabled(v)"
+            />
+          </label>
+
           <!-- Wallet List with embedded Account Lists -->
           <WalletList
             :wallets="wallets"
