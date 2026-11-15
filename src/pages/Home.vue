@@ -171,6 +171,13 @@ function handleNavigateToSendReceive(path: string) {
         <span><strong>Accelerator-Z</strong> · fund, propose and vote on community projects</span>
         <span aria-hidden="true">→</span>
       </RouterLink>
+      <RouterLink
+        to="/swaps"
+        class="flex items-center justify-between rounded-md border bg-card px-4 py-3 text-sm hover:bg-muted"
+      >
+        <span><strong>P2P Swaps</strong> · trade tokens with another address, trustlessly</span>
+        <span aria-hidden="true">→</span>
+      </RouterLink>
 
       <!-- Tabs -->
       <Card>

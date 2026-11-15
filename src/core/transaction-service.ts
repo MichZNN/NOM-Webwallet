@@ -62,6 +62,13 @@ export class TransactionService extends ChainService {
     return this.publish(receiveBlock, keyPair, undefined, false)
   }
 
+  // Embedded contract call without the send overlay (swap auto-unlock). Same
+  // queue as every other send.
+  async sendEmbeddedInBackground(block: AccountBlockTemplate, keyPair: KeyPair): Promise<AccountBlockTemplate> {
+    await this.ensureInitialized()
+    return this.publish(block, keyPair, undefined, false)
+  }
+
   // Send an embedded contract block (for rewards, staking, etc).
   // `beforePublish` runs after PoW and signing, right before the block is
   // published. Throwing from it stops the publish.

@@ -11,7 +11,8 @@ captured and decoded with the SDK's contract ABIs, so the tests assert on the
 exact method, arguments, token and amount that would go on chain.
 
 Covered: keystore import, duplicate-wallet refusal, change password, network switch
-(mainnet/testnet, wrong-chain node), pillar
+(mainnet/testnet, wrong-chain node), Accelerator-Z, P2P swaps (start, join, unsafe
+deposits), pillar
 update, sentinel registration (QSR deposit + register), pillar name
 validation, token issue, mint, burn and update.
 
@@ -30,6 +31,12 @@ They are skipped unless `TESTNET_MNEMONIC` is set:
 ```bash
 TESTNET_MNEMONIC="word1 … word24" npm run e2e:testnet
 ```
+
+- `deposit-qsr`: QSR deposit and withdrawal for sentinels.
+- `swap`: a full HTLC swap between two wallets; also needs `TESTNET_MNEMONIC_B`
+  (a second funded testnet wallet). Takes about 10 minutes with PoW.
+- `accelerator`: creates a project (costs 1 testnet ZNN); also needs
+  `TESTNET_ACCELERATOR=1`.
 
 Use a throwaway testnet-only wallet funded from the faucet
 (https://faucet.zenonhub.io/, 10 ZNN + 100 QSR per 24h). Without plasma each

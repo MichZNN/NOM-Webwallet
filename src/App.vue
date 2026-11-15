@@ -7,6 +7,7 @@ import {
   resumeTracking,
   useAccount,
   useAutoReceive,
+  useSwaps,
   useNetworkSync,
   useNetwork,
   useUnlockTarget,
@@ -61,6 +62,7 @@ onTxProgress((tx) => {
 })
 const network = useNetwork()
 const autoReceive = useAutoReceive()
+const swaps = useSwaps()
 useNetworkSync({ isWalletConnectWindow: () => route.path === '/walletconnect' })
 const walletConnect = useWalletConnect()
 
@@ -112,6 +114,9 @@ onMounted(async () => {
 
   // Receives for unlocked accounts only, so it's idle until a wallet is unlocked.
   void autoReceive.start()
+  // Watches open swaps (no node calls when there are none) and finishes
+  // incoming ones once the counterparty reveals the secret.
+  swaps.start()
 
   // The extension's WalletConnect tab initializes itself instead (§1.8) — the
   // popup and the approval window never load the WalletConnect stack.

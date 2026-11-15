@@ -28,6 +28,11 @@ export const router = createRouter({
       meta: { requiresWallet: true },
     },
     {
+      path: '/swaps',
+      component: () => import('@/pages/Swaps.vue'),
+      meta: { requiresWallet: true },
+    },
+    {
       path: '/accelerator',
       component: () => import('@/pages/Accelerator.vue'),
       meta: { requiresWallet: true },

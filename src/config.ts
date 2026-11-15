@@ -140,6 +140,11 @@ export const DELIVERED_OUTCOME_TTL_MS = 60 * 1000
 /** App.vue — the extension's WalletConnect popup window, reused across opens. */
 export const SESSION_KEY_WALLETCONNECT_WINDOW_ID = 'nom-wallet.walletConnectWindowId'
 
+/** useSwaps.ts. HTLC swap records per chain id (no secrets: preimages are derived). */
+export const STORAGE_KEY_SWAPS = 'nom-wallet-htlc-swaps'
+/** useSwaps.ts. Gap between two scans of the HTLC contract while the wallet is open. */
+export const SWAP_POLL_MS = 10_000
+
 /** useAutoReceive.ts. Storage key for the auto-receive on/off setting (default on). */
 export const STORAGE_KEY_AUTO_RECEIVE = 'nom-wallet-auto-receive'
 /** useAutoReceive.ts. Gap between two checks for incoming transactions. */
