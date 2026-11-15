@@ -18,6 +18,7 @@ import RewardsTab from '@/components/RewardsTab.vue'
 import PlasmaTab from '@/components/PlasmaTab.vue'
 import PillarTab from '@/components/PillarTab.vue'
 import StakeTab from '@/components/StakeTab.vue'
+import HistoryTab from '@/components/HistoryTab.vue'
 import WalletStats from '@/components/WalletStats.vue'
 import { ArrowDownCircleIcon, ArrowUpCircleIcon, WalletIcon } from 'lucide-vue-next'
 
@@ -31,7 +32,7 @@ const account = useAccount(() => wallet.activeAccountAddress.value)
 const requestUnlock = inject<(path?: string) => void>('requestUnlock')!
 
 // UI state
-const activeTab = ref<'tokens' | 'rewards' | 'plasma' | 'pillar' | 'stake'>('tokens')
+const activeTab = ref<'tokens' | 'rewards' | 'plasma' | 'pillar' | 'stake' | 'history'>('tokens')
 const tokensTabRef = ref<InstanceType<typeof TokensTab> | null>(null)
 
 // Toast
@@ -172,6 +173,7 @@ function handleNavigateToSendReceive(path: string) {
             <TabsTrigger variant="underline" value="plasma">Plasma</TabsTrigger>
             <TabsTrigger variant="underline" value="pillar">Pillar</TabsTrigger>
             <TabsTrigger variant="underline" value="stake">Staking</TabsTrigger>
+            <TabsTrigger variant="underline" value="history">History</TabsTrigger>
           </TabsList>
           <CardContent class="p-6">
             <TabsContent value="tokens">
@@ -219,6 +221,13 @@ function handleNavigateToSendReceive(path: string) {
                 :is-wallet-locked="isWalletLocked"
                 @show-toast="toast.show"
                 @stake-updated="handleStakeUpdated"
+              />
+            </TabsContent>
+
+            <TabsContent value="history">
+              <HistoryTab
+                :active-account-address="wallet.activeAccountAddress.value"
+                :is-active="activeTab === 'history'"
               />
             </TabsContent>
           </CardContent>
