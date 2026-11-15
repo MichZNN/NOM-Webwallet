@@ -28,6 +28,11 @@ export const router = createRouter({
       meta: { requiresWallet: true },
     },
     {
+      path: '/nodes',
+      component: () => import('@/pages/Nodes.vue'),
+      meta: { requiresWallet: true },
+    },
+    {
       path: '/token/:tokenStandard',
       component: () => import('@/pages/TokenDetails.vue'),
       meta: { requiresWallet: true },
