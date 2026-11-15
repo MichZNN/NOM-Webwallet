@@ -26,6 +26,7 @@ const CONTRACTS = [
   sdk.CommonContract,
   sdk.StakeContract,
   sdk.PlasmaContract,
+  sdk.AcceleratorContract,
 ]
 
 /** A published block as { method, args, token, amount, to } for assertions. */

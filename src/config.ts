@@ -13,7 +13,11 @@ export const STORAGE_KEY_CHAIN_ID = 'nom-wallet-chain-id'
 export const STORAGE_KEY_NETWORK_ID = 'nom-wallet-network-id'
 
 /** Built-in node URLs offered in the network selector. */
-export const DEFAULT_NODES: string[] = [DEFAULT_NODE_URL, 'wss://my.hc1node.com:35998']
+export const DEFAULT_NODES: string[] = [
+  DEFAULT_NODE_URL,
+  'wss://my.hc1node.com:35998',
+  'wss://node.zenon.nom.co:35998',
+]
 
 /**
  * Websocket connect timeout (ms) for node switches. The SDK defaults to 30s,

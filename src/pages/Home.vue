@@ -164,6 +164,14 @@ function handleNavigateToSendReceive(path: string) {
         :total-qsr-rewards="account.totalQsrRewards.value"
       />
 
+      <RouterLink
+        to="/accelerator"
+        class="flex items-center justify-between rounded-md border bg-card px-4 py-3 text-sm hover:bg-muted"
+      >
+        <span><strong>Accelerator-Z</strong> · fund, propose and vote on community projects</span>
+        <span aria-hidden="true">→</span>
+      </RouterLink>
+
       <!-- Tabs -->
       <Card>
         <Tabs v-model="activeTab">
