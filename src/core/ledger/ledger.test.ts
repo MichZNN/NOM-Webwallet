@@ -5,6 +5,7 @@ import { ZenonLedgerApp } from './ledger-app'
 import { FakeZenonLedger } from './fake-ledger'
 import { LedgerKeyPair, signWithLedger } from './ledger-sign'
 import { transactionBytes } from './tx-bytes'
+import { disconnectLedger, getLedgerApp } from './connection'
 
 const MNEMONIC =
   'abandon amount liar amount expire adjust cage candy arch gather drum bullet absurd math era live bid rhythm alien crouch range attend journey unaware'
@@ -149,5 +150,43 @@ describe('Ledger signing with the fake device', () => {
     const tx = await prepareWithLedger(kp)
     tx.amount = 1n
     await expect(signWithLedger(tx, kp, 1)).rejects.toThrow(/hash mismatch/)
+  })
+})
+
+describe('connection', () => {
+  it('shares one connection between concurrent first uses and reconnects after a disconnect', async () => {
+    let opened = 0
+    ;(globalThis as { __nomLedgerTransport?: unknown }).__nomLedgerTransport = async () => {
+      opened++
+      return new FakeZenonLedger(keyStore.seed)
+    }
+    try {
+      const [a, b] = await Promise.all([getLedgerApp(), getLedgerApp()])
+      expect(a).toBe(b)
+      expect(opened).toBe(1)
+      await disconnectLedger()
+      await getLedgerApp()
+      expect(opened).toBe(2)
+    } finally {
+      await disconnectLedger()
+      delete (globalThis as { __nomLedgerTransport?: unknown }).__nomLedgerTransport
+    }
+  })
+
+  it('forgets a failed connect so the next use retries', async () => {
+    let attempts = 0
+    ;(globalThis as { __nomLedgerTransport?: unknown }).__nomLedgerTransport = async () => {
+      attempts++
+      if (attempts === 1) throw new Error('No device selected.')
+      return new FakeZenonLedger(keyStore.seed)
+    }
+    try {
+      await expect(getLedgerApp()).rejects.toThrow(/pick the device/)
+      await expect(getLedgerApp()).resolves.toBeDefined()
+      expect(attempts).toBe(2)
+    } finally {
+      await disconnectLedger()
+      delete (globalThis as { __nomLedgerTransport?: unknown }).__nomLedgerTransport
+    }
   })
 })

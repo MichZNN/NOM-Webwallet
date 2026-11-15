@@ -52,8 +52,9 @@ async function connect() {
         <li>Check that the address on the Ledger matches, then approve.</li>
       </ol>
       <FieldDescription>
-        Your keys stay on the Ledger; every transaction is confirmed on the device. P2P swaps and
-        signing messages for dApps are not available with a Ledger.
+        Your keys stay on the Ledger; every transaction is confirmed on the device. The device shows
+        amount and recipient for ZNN and QSR sends; other tokens, contract calls and receives are shown
+        only partly or blind. P2P swaps and signing messages for dApps are not available with a Ledger.
       </FieldDescription>
       <p v-if="step === 'confirm'" class="text-sm font-medium">Confirm the address on your Ledger…</p>
       <p v-if="errorMessage" class="text-sm text-destructive">{{ errorMessage }}</p>

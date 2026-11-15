@@ -13,6 +13,8 @@ import {withTimeout} from './with-timeout'
 import {SEND_TIMEOUT_MS} from '@/config'
 import {Zenon} from 'znn-typescript-sdk'
 import {isLedgerKeyPair, signWithLedger} from './ledger/ledger-sign'
+import {LedgerStatusError} from './ledger/apdu'
+import {disconnectLedger} from './ledger/connection'
 import type {LedgerKeyPair} from './ledger/ledger-sign'
 
 const SEND_TIMEOUT_MESSAGE =
@@ -106,6 +108,8 @@ export class TransactionService extends ChainService {
     const send = () =>
       this.sendQueue(() => {
         let gaveUp = false
+        // Where a Ledger send is, for an honest timeout message.
+        let stage: 'preparing' | 'device' | 'publishing' = 'preparing'
         const work = (async () => {
           await this.ensureInitialized()
           if (ledgerKeyPair) ledgerKeyPair.preparing = true
@@ -118,19 +122,30 @@ export class TransactionService extends ChainService {
           // Ledger accounts: prepareBlock put in a dummy signature; get the
           // real one from the device (with all checks) before publishing.
           if (ledgerKeyPair) {
-            prepared = await signWithLedger(prepared, ledgerKeyPair, Zenon.getChainIdentifier())
+            stage = 'device'
+            try {
+              prepared = await signWithLedger(prepared, ledgerKeyPair, Zenon.getChainIdentifier())
+            } catch (err) {
+              // A rejection keeps the connection; anything else (unplugged,
+              // locked, stuck) drops it so the next attempt reconnects.
+              if (!(err instanceof LedgerStatusError)) void disconnectLedger()
+              throw err
+            }
             // Approved on the device after we reported a timeout: don't send.
             if (gaveUp) throw new Error('Signed after the time limit; not sent')
           }
           beforePublish?.()
+          stage = 'publishing'
           return this.zenon.ledger.publishRawTransaction(prepared)
         })()
-        return withTimeout(
-          work,
-          SEND_TIMEOUT_MS,
-          ledger ? 'Not confirmed on the Ledger in time; nothing was sent' : SEND_TIMEOUT_MESSAGE
-        ).catch((err) => {
+        return withTimeout(work, SEND_TIMEOUT_MS, SEND_TIMEOUT_MESSAGE).catch((err) => {
           gaveUp = true
+          if (ledger && err instanceof Error && err.message === SEND_TIMEOUT_MESSAGE && stage !== 'publishing') {
+            // The device prompt is abandoned; drop the connection so the stale
+            // request doesn't block the next one. Nothing was published.
+            void disconnectLedger()
+            throw new Error('Not confirmed on the Ledger in time; nothing was sent')
+          }
           throw err
         })
       })

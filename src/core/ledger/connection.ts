@@ -1,7 +1,8 @@
 import {ZenonLedgerApp} from './ledger-app'
 import type {LedgerTransport} from './ledger-app'
 
-let app: ZenonLedgerApp | null = null
+let app: Promise<ZenonLedgerApp> | null = null
+let unplugWatch = false
 
 /** WebHID is needed for Ledger (Chrome, Edge, Brave, Opera on desktop). */
 export function isLedgerSupported(): boolean {
@@ -34,20 +35,44 @@ function factory(): TransportFactory {
   return webHidTransport
 }
 
-/** The connected Zenon app, connecting on first use. */
-export async function getLedgerApp(): Promise<ZenonLedgerApp> {
+/**
+ * The connected Zenon app, connecting on first use. Concurrent first calls share
+ * one connection; a failed connect is forgotten so the next call retries.
+ */
+export function getLedgerApp(): Promise<ZenonLedgerApp> {
   if (app) return app
   if (!isLedgerSupported() && !import.meta.env.DEV) {
-    throw new Error('This browser cannot talk to a Ledger (use Chrome, Edge or Brave on desktop)')
+    return Promise.reject(new Error('This browser cannot talk to a Ledger (use Chrome, Edge or Brave on desktop)'))
   }
-  const transport = await factory()()
-  app = new ZenonLedgerApp(transport)
-  return app
+  watchUnplug()
+  const connecting = factory()()
+    .then((transport) => new ZenonLedgerApp(transport))
+    .catch((err) => {
+      if (app === connecting) app = null
+      throw new Error(
+        err instanceof Error && /permission|gesture|No device selected/i.test(err.message)
+          ? 'Connect the Ledger again from the wallet settings (the browser needs you to pick the device)'
+          : err instanceof Error
+            ? err.message
+            : 'Could not connect to the Ledger'
+      )
+    })
+  app = connecting
+  return connecting
 }
 
-/** Forget the device (after an error or on request); the next use reconnects. */
+/** Forget the device (after an error, a timeout or an unplug); the next use reconnects. */
 export async function disconnectLedger(): Promise<void> {
   const current = app
   app = null
-  await current?.close().catch(() => undefined)
+  if (!current) return
+  await current.then((a) => a.close()).catch(() => undefined)
+}
+
+function watchUnplug(): void {
+  if (unplugWatch || !isLedgerSupported()) return
+  unplugWatch = true
+  ;(navigator as Navigator & { hid: EventTarget }).hid.addEventListener('disconnect', () => {
+    void disconnectLedger()
+  })
 }

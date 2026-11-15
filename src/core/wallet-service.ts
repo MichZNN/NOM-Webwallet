@@ -92,7 +92,7 @@ export class WalletService {
     const data = await this.storage.get<WalletStorage>(STORAGE_KEY)
     const wallet = data?.wallets.find((w) => w.baseAddress === address)
     if (!wallet) throw new Error('Wallet not found')
-    this.assertNotLedger(wallet, 'Exporting a keystore file')
+    this.assertNotLedger(wallet, 'This')
 
     try {
       const keyStore = await KeyFile.setPassword(password).decrypt(wallet.encryptedKeyFile)
@@ -347,6 +347,10 @@ export class WalletService {
       // The user confirms the new address on the device before it is stored.
       const app = await getLedgerApp()
       await app.ensureZenonApp()
+      const base = wallet.accounts.find((a) => a.index === 0)?.publicKey
+      if (!base || Buffer.from(await app.publicKey(0)).toString('hex') !== base) {
+        throw new Error('This Ledger does not hold this wallet (different device or seed)')
+      }
       const publicKey = Buffer.from(await app.publicKey(newIndex, true)).toString('hex')
       const probe = new LedgerKeyStore({ accounts: [{ index: newIndex, publicKey }] } as unknown as Wallet)
       const ledgerAccount: WalletAccount = {
@@ -355,9 +359,13 @@ export class WalletService {
         label: label || `Account ${newIndex + 1}`,
         publicKey,
       }
-      wallet.accounts.push(ledgerAccount)
-      if (data) await this.storage.set(STORAGE_KEY, data)
-      sessionManager.unlock(walletAddress, new LedgerKeyStore(wallet).asKeyStore())
+      // Re-read: the device confirmation can take a while and storage may have changed.
+      const latest = await this.storage.get<WalletStorage>(STORAGE_KEY)
+      const target = latest?.wallets.find((w) => w.baseAddress === walletAddress)
+      if (!latest || !target) throw new Error('Wallet not found')
+      if (!target.accounts.some((a) => a.index === newIndex)) target.accounts.push(ledgerAccount)
+      await this.storage.set(STORAGE_KEY, latest)
+      sessionManager.unlock(walletAddress, new LedgerKeyStore(target).asKeyStore())
       return ledgerAccount
     }
 
