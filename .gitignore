@@ -11,3 +11,6 @@ dist-extension.zip
 .air
 .pipeline/
 docs/superpowers/
+# Playwright
+test-results/
+playwright-report/
