@@ -302,6 +302,11 @@ function handleAddWalletCancel() {
       </div>
     </div>
 
+    <Button variant="outline" class="w-full" @click="addWalletDialogOpen = true">
+      <PlusIcon class="mr-2 h-4 w-4" />
+      Add Wallet
+    </Button>
+
     <!-- Add Wallet Dialog -->
     <Dialog v-model:open="addWalletDialogOpen">
       <DialogContent class="max-w-2xl">
