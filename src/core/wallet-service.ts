@@ -2,6 +2,8 @@ import {KeyFile, KeyStore} from 'znn-typescript-sdk'
 import type {StorageAdapter, Wallet, WalletAccount, WalletStorage} from '@/types'
 import {KDF_CONFIG, STORAGE_KEY_WALLETS as STORAGE_KEY} from '@/config'
 import {sessionManager} from './session-manager'
+import {parseKeystoreFile, toSyriusKeystoreFile} from './syrius-keystore'
+import type {SyriusKeystoreFile} from './syrius-keystore'
 import {storageService} from './storage/storage-service'
 import {Buffer} from 'buffer'
 
@@ -61,8 +63,52 @@ export class WalletService {
     return await this.saveWallet(keyStore, password, name || 'Imported Wallet')
   }
 
+  // Import a keystore file (Syrius / znn-cli). The wallet keeps the file's
+  // password, re-encrypted here with this wallet's stronger KDF params.
+  async importKeystore(fileText: string, password: string, name?: string): Promise<Wallet> {
+    const keyFile = parseKeystoreFile(fileText)
+    let keyStore: KeyStore
+    try {
+      keyStore = await KeyFile.setPassword(password).decrypt(keyFile)
+    } catch {
+      throw new Error('Incorrect password for this keystore file')
+    }
+    return await this.saveWallet(keyStore, password, name || 'Imported Wallet')
+  }
+
+  // Export a wallet as a keystore file Syrius can import, encrypted with the
+  // wallet's own password (verified first; wrong guesses count toward lockout).
+  async exportKeystore(address: string, password: string): Promise<SyriusKeystoreFile> {
+    const keyStore = await this.decryptWithPassword(address, password)
+    return await toSyriusKeystoreFile(keyStore, password)
+  }
+
+  // Decrypt a stored wallet's key file, counting failures toward the lockout.
+  private async decryptWithPassword(address: string, password: string): Promise<KeyStore> {
+    this.assertNotLockedOut(address)
+
+    const data = await this.storage.get<WalletStorage>(STORAGE_KEY)
+    const wallet = data?.wallets.find((w) => w.baseAddress === address)
+    if (!wallet) throw new Error('Wallet not found')
+
+    try {
+      const keyStore = await KeyFile.setPassword(password).decrypt(wallet.encryptedKeyFile)
+      this.failedAttempts.delete(address)
+      return keyStore
+    } catch {
+      this.recordFailedAttempt(address)
+      throw new Error('Incorrect password')
+    }
+  }
+
   // Shared logic for saving a wallet
   private async saveWallet(keyStore: KeyStore, password: string, name: string): Promise<Wallet> {
+    const baseAddress = keyStore.getBaseAddress().toString()
+    const existing = await this.storage.get<WalletStorage>(STORAGE_KEY)
+    if (existing?.wallets.some((w) => w.baseAddress === baseAddress)) {
+      throw new Error('This wallet has already been added')
+    }
+
     const keyFile = KeyFile.setPassword(password)
     // Encrypt with strong KDF params; the SDK persists them in the keyfile.
     const encryptedKeyFile = await keyFile.encrypt(keyStore, KDF_CONFIG)

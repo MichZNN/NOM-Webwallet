@@ -17,6 +17,7 @@ import {
 } from 'nom-ui'
 import {EyeIcon, EyeOffIcon} from 'lucide-vue-next'
 import PasswordStrengthMeter from './PasswordStrengthMeter.vue'
+import ImportKeystoreForm from './ImportKeystoreForm.vue'
 
 const emit = defineEmits<{
   success: [walletAddress: string]
@@ -26,6 +27,7 @@ const emit = defineEmits<{
 const wallet = useWallet()
 const toast = useToast()
 
+const source = ref<'phrase' | 'keystore'>('phrase')
 const name = ref('')
 const mnemonic = ref('')
 const password = ref('')
@@ -71,7 +73,13 @@ async function handleImport() {
     emit('success', importedWallet.baseAddress)
   } catch (error) {
     console.error('Failed to import wallet:', error)
-    toast.show('Failed to import wallet. Please check your recovery phrase and try again.', 'error')
+    const duplicate = error instanceof Error && error.message.includes('already been added')
+    toast.show(
+      duplicate
+        ? error.message
+        : 'Failed to import wallet. Please check your recovery phrase and try again.',
+      'error'
+    )
   } finally {
     isImporting.value = false
   }
@@ -82,12 +90,42 @@ async function handleImport() {
   <div class="space-y-4">
     <div>
       <h2 class="mb-2 text-2xl font-bold">Import Wallet</h2>
-      <p class="mb-6 text-sm text-muted-foreground">
-        Enter your recovery phrase to restore your wallet
+      <p class="mb-4 text-sm text-muted-foreground">
+        {{
+          source === 'phrase'
+            ? 'Enter your recovery phrase to restore your wallet'
+            : 'Open a keystore file to restore your wallet'
+        }}
       </p>
+      <div class="mb-2 grid grid-cols-2 gap-2" role="group" aria-label="Import from">
+        <Button
+          type="button"
+          size="sm"
+          :variant="source === 'phrase' ? 'default' : 'outline'"
+          :aria-pressed="source === 'phrase'"
+          @click="source = 'phrase'"
+        >
+          Recovery Phrase
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          :variant="source === 'keystore' ? 'default' : 'outline'"
+          :aria-pressed="source === 'keystore'"
+          @click="source = 'keystore'"
+        >
+          Keystore File
+        </Button>
+      </div>
     </div>
 
-    <FieldGroup>
+    <ImportKeystoreForm
+      v-if="source === 'keystore'"
+      @success="(address) => emit('success', address)"
+      @cancel="emit('cancel')"
+    />
+
+    <FieldGroup v-else>
       <Field>
         <FieldLabel for="import-wallet-name">Wallet Name (optional)</FieldLabel>
         <Input id="import-wallet-name" v-model="name" placeholder="Imported Wallet" />

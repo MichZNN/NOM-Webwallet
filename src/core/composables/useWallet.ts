@@ -104,6 +104,29 @@ export function useWallet() {
     }
   }
 
+  // Import a Syrius / znn-cli keystore file
+  async function importKeystore(fileText: string, password: string, name?: string) {
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const imported = await walletService.importKeystore(fileText, password, name)
+      await loadWalletData()
+      window.dispatchEvent(new CustomEvent('wallet-status-changed'))
+      return imported
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to import keystore file'
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  // Export a wallet as a Syrius-compatible keystore file (verifies the password)
+  function exportKeystore(address: string, password: string) {
+    return walletService.exportKeystore(address, password)
+  }
+
   // Change a wallet's password (verifies the current one first)
   async function changePassword(
     address: string,
@@ -266,6 +289,8 @@ export function useWallet() {
     importWallet,
     unlockWallet,
     changePassword,
+    importKeystore,
+    exportKeystore,
     lockWallet,
     lockAllWallets,
     setActiveWallet,
