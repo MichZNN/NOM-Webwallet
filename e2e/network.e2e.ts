@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { MockNode } from './mock-node'
 import { KEYSTORE_ADDRESS, importFixtureWallet } from './helpers'
 
@@ -46,6 +46,12 @@ async function switchTo(page: Page, label: 'Mainnet' | 'Testnet') {
   await reloaded
 }
 
+async function box(locator: Locator) {
+  const b = await locator.boundingBox()
+  if (!b) throw new Error('element has no box')
+  return b
+}
+
 test('switches to testnet: banner, testnet explorer links, and back', async ({ page }) => {
   const node = new MockNode({
     chainIdFor: (url) => (url.includes('testnet') ? TESTNET_CHAIN : 1),
@@ -61,19 +67,19 @@ test('switches to testnet: banner, testnet explorer links, and back', async ({ p
   // The wallet reloads on the new network.
   await expect(page.getByText('TESTNET · tokens have no value')).toBeVisible({ timeout: 30_000 })
   // The header sits right below the banner, not a banner's height further down.
-  const banner = await page.getByRole('status').filter({ hasText: 'TESTNET' }).boundingBox()
-  const header = await page.locator('header').first().boundingBox()
-  expect(Math.abs(header!.y - (banner!.y + banner!.height))).toBeLessThan(2)
+  const banner = await box(page.getByRole('status').filter({ hasText: 'TESTNET' }))
+  const header = await box(page.locator('header').first())
+  expect(Math.abs(header.y - (banner.y + banner.height))).toBeLessThan(2)
   // A tooltip by the top edge opens over the banner, not under it.
   await page.getByLabel(/^Network (dis)?connected$/).hover()
   const tip = page.locator('[data-reka-popper-content-wrapper]').filter({ hasText: 'testnet' })
   await expect(tip).toBeVisible()
-  const box = (await tip.boundingBox())!
-  expect(box.y).toBeLessThan(banner!.y + banner!.height) // it does reach into the strip
+  const tipBox = await box(tip)
+  expect(tipBox.y).toBeLessThan(banner.y + banner.height) // it does reach into the strip
   const onTop = await page.evaluate(
     ([x, y]) => !!document.elementFromPoint(x, y)?.closest('[data-reka-popper-content-wrapper]'),
     // a point inside the banner's strip
-    [box.x + box.width / 2, Math.max(box.y + 4, banner!.y + 4)]
+    [tipBox.x + tipBox.width / 2, Math.max(tipBox.y + 4, banner.y + 4)]
   )
   expect(onTop).toBe(true)
   expect(await page.evaluate(() => localStorage.getItem('nom-wallet-chain-id'))).toBe(

@@ -131,6 +131,11 @@ async function handleFuse() {
     formError.value = `Minimum fuse amount is ${minFuseAmount} QSR`
     return
   }
+  // go-zenon FuseMethod: the amount must be a multiple of CostPerFusionUnit (1 QSR).
+  if (!Number.isInteger(amount)) {
+    formError.value = 'Fuse whole QSR only (e.g. 10 or 11, not 10.5)'
+    return
+  }
 
   // Check balance
   const balanceNum = parseFloat(qsrBalance.value)
@@ -253,13 +258,13 @@ async function handleCancel(fusionId: string) {
             id="fuse-amount"
             v-model="fuseAmount"
             type="number"
-            step="any"
+            step="1"
             :min="minFuseAmount"
-            placeholder="10.00"
+            placeholder="10"
             :disabled="plasma.isFusing.value"
           />
           <div class="text-xs text-muted-foreground">
-            Available: {{ qsrBalance }} QSR | Minimum: {{ minFuseAmount }} QSR
+            Available: {{ qsrBalance }} QSR | Minimum: {{ minFuseAmount }} QSR, whole QSR only
           </div>
         </div>
 

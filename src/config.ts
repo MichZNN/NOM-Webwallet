@@ -167,7 +167,14 @@ export const TX_TRACK_POLL_MS = 5000
 export const TX_TRACK_TIMEOUT_MS = 5 * 60 * 1000
 /**
  * transaction-service.ts. Ceiling on one send once it leaves the queue. It
- * covers the node connect (CONNECT_TIMEOUT_MS), the extension's 120 s PoW
- * ceiling (extension-pow-provider.ts) and the send's RPC calls, with margin.
+ * covers the node connect (CONNECT_TIMEOUT_MS) and the send's RPC calls, with
+ * margin. Time spent generating PoW does not count (see POW_TIMEOUT_MS).
  */
 export const SEND_TIMEOUT_MS = 3 * 60 * 1000
+/**
+ * Ceiling on one block's PoW, only a guard against a hung worker or sandbox.
+ * The highest difficulty a block can need (141.75M hashes) averages about 1.5
+ * minutes on a desktop browser, but single runs vary a lot (one fuse block at
+ * 78.75M took 3.5 minutes) and phones are several times slower.
+ */
+export const POW_TIMEOUT_MS = 20 * 60 * 1000
