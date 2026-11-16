@@ -425,7 +425,7 @@ async function handleWalletAdded(address: string) {
 
 <template>
   <TooltipProvider disable-hoverable-content>
-    <div class="relative min-h-screen overflow-x-hidden">
+    <div class="relative min-h-screen overflow-x-clip">
       <Toaster class="pointer-events-auto" />
       <NetworkBanner />
       <SendOverlay />
