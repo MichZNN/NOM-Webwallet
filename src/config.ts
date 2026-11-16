@@ -104,6 +104,14 @@ export const STORAGE_KEY_WALLETS = 'nom-wallet-storage'
 export const MAX_PENDING_DAPP_REQUESTS = 5
 
 /** phase 2 — WalletConnect surface. */
+/**
+ * Ledger support is experimental: built against the community Zenon Ledger app's
+ * source and tested only with a simulated device. Hidden in production builds
+ * until it has run on real hardware; set VITE_ENABLE_LEDGER=true to show it.
+ */
+export const LEDGER_ENABLED: boolean =
+  import.meta.env.DEV || import.meta.env.VITE_ENABLE_LEDGER === 'true'
+
 export const WALLETCONNECT_PROJECT_ID: string = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID ?? ''
 /** phase 2 — WalletConnect surface. */
 export const WALLETCONNECT_ENABLED = WALLETCONNECT_PROJECT_ID.length >= 32

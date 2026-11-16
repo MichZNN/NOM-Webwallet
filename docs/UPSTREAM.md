@@ -29,7 +29,7 @@ offers the logic behind it. Paths are in the fork; test counts are unit tests un
 | Phones / responsive | Full phone layouts | Not done | — |
 | Mainnet/testnet switch with banner, faucet and testnet explorer links | No (chain id field only) | `networks.ts`, `NetworkBanner.vue`, `NetworkSwitch.vue` | e2e |
 | P2P swaps (derived secret, durations, recovery from chain) | No | `swap-rules.ts`, `swap-service.ts`, `swap-recovery.ts`, `pages/Swaps.vue` | 14 + e2e + testnet |
-| Ledger hardware wallet | No | `src/core/ledger/*`, see `docs/LEDGER.md` | 12 + e2e (fake device) |
+| Ledger hardware wallet (experimental, hidden in production) | No | `src/core/ledger/*`, see `docs/LEDGER.md` | 12 + e2e (simulated device only, never run on hardware) |
 | Accelerator-Z: projects, phases, voting, donations | No | `accelerator-rules.ts`, `accelerator-service.ts`, `pages/Accelerator.vue` | 12 + e2e + testnet |
 | Register / manage your own pillar and sentinel | No (delegation only) | `node-rules.ts`, `node-service.ts`, `pillar-service.ts`, `pages/Nodes.vue` | 6 + e2e |
 | Syrius keystore import / export | No | `src/core/syrius-keystore.ts` | 10 + e2e |
@@ -84,7 +84,8 @@ design system, or is left out until the design has the screen.
 6. **Pillar and sentinel management**: `node-rules.ts`, `node-service.ts`, once a screen exists.
 7. **Swaps on HTLC**: `swap-rules.ts`, `swap-service.ts`, `swap-recovery.ts`, under the HTLC pages.
 8. **Accelerator-Z**: `accelerator-rules.ts`, `accelerator-service.ts`, once a screen exists.
-9. **Ledger**: `src/core/ledger/*`, once onboarding and send review have its states.
+9. **Ledger**: `src/core/ledger/*`, once it has run on a real device and onboarding and send review
+   have its states.
 10. **Test harness**: the mocked-node Playwright setup (`e2e/mock-node.ts`) and the live testnet tests,
     if wanted upstream.
 

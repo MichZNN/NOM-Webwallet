@@ -17,6 +17,7 @@ import {
 import {EyeIcon, EyeOffIcon} from 'lucide-vue-next'
 import PasswordStrengthMeter from './PasswordStrengthMeter.vue'
 import ImportKeystoreForm from './ImportKeystoreForm.vue'
+import {LEDGER_ENABLED} from '@/config'
 import LedgerConnectForm from './LedgerConnectForm.vue'
 import MnemonicInput from './MnemonicInput.vue'
 
@@ -98,7 +99,12 @@ async function handleImport() {
               : 'Use the accounts of your Ledger hardware wallet'
         }}
       </p>
-      <div class="mb-2 grid grid-cols-3 gap-2" role="group" aria-label="Import from">
+      <div
+        class="mb-2 grid gap-2"
+        :class="LEDGER_ENABLED ? 'grid-cols-3' : 'grid-cols-2'"
+        role="group"
+        aria-label="Import from"
+      >
         <Button
           type="button"
           size="sm"
@@ -118,6 +124,7 @@ async function handleImport() {
           Keystore File
         </Button>
         <Button
+          v-if="LEDGER_ENABLED"
           type="button"
           size="sm"
           :variant="source === 'ledger' ? 'default' : 'outline'"
