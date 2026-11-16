@@ -12,13 +12,13 @@ import {
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
-  Textarea,
   useToast,
 } from 'nom-ui'
 import {EyeIcon, EyeOffIcon} from 'lucide-vue-next'
 import PasswordStrengthMeter from './PasswordStrengthMeter.vue'
 import ImportKeystoreForm from './ImportKeystoreForm.vue'
 import LedgerConnectForm from './LedgerConnectForm.vue'
+import MnemonicInput from './MnemonicInput.vue'
 
 const emit = defineEmits<{
   success: [walletAddress: string]
@@ -36,10 +36,8 @@ const confirmPassword = ref('')
 const showPassword = ref(false)
 const isImporting = ref(false)
 
-const mnemonicWords = computed(() => mnemonic.value.trim().split(/\s+/).filter(Boolean))
-const mnemonicValid = computed(
-  () => mnemonicWords.value.length === 12 || mnemonicWords.value.length === 24
-)
+// Set by MnemonicInput only once the phrase is complete with a valid checksum.
+const mnemonicValid = computed(() => mnemonic.value !== '')
 const passwordsMatch = computed(() => password.value === confirmPassword.value)
 const strength = usePasswordStrength(password)
 const passwordStrong = computed(() => strength.value.meetsFloor)
@@ -150,20 +148,12 @@ async function handleImport() {
       </Field>
 
       <Field>
-        <FieldLabel for="recovery-phrase">Recovery Phrase (12 or 24 words)</FieldLabel>
-        <Textarea
-          id="recovery-phrase"
-          v-model="mnemonic"
-          placeholder="word1 word2 word3 ..."
-          class="min-h-[80px]"
-        />
-        <FieldDescription>
-          {{ mnemonicWords.length }} words entered
-          <span v-if="mnemonic && !mnemonicValid" class="text-destructive">
-            (must be 12 or 24 words)
-          </span>
-        </FieldDescription>
+        <FieldLabel>Recovery Phrase</FieldLabel>
+        <MnemonicInput @phrase="(p) => (mnemonic = p ?? '')" />
       </Field>
+
+      <!-- The password is only asked for once the phrase is right. -->
+      <template v-if="mnemonicValid">
 
       <Field>
         <FieldLabel for="import-password">Password</FieldLabel>
@@ -216,6 +206,8 @@ async function handleImport() {
           Passwords do not match
         </FieldDescription>
       </Field>
+
+      </template>
 
       <div class="flex gap-3">
         <Button variant="outline" class="flex-1" @click="emit('cancel')">Cancel</Button>
