@@ -1,11 +1,13 @@
 import {KeyFile, KeyStore} from 'znn-typescript-sdk'
 import type {StorageAdapter, Wallet, WalletAccount, WalletStorage} from '@/types'
-import {KDF_CONFIG} from '@/config'
+import {KDF_CONFIG, STORAGE_KEY_WALLETS as STORAGE_KEY} from '@/config'
 import {sessionManager} from './session-manager'
+import {LedgerKeyStore, isLedgerWallet} from './ledger/ledger-keystore'
+import {getLedgerApp} from './ledger/connection'
+import {parseKeystoreFile, toSyriusKeystoreFile} from './syrius-keystore'
+import type {SyriusKeystoreFile} from './syrius-keystore'
 import {storageService} from './storage/storage-service'
 import {Buffer} from 'buffer'
-
-const STORAGE_KEY = 'nom-wallet-storage'
 
 const MAX_UNLOCK_ATTEMPTS = 5
 const BASE_LOCKOUT_MS = 5_000 // 5 seconds after 5th failed attempt
@@ -30,24 +32,25 @@ export class WalletService {
     return WalletService.instance
   }
 
-  // Get all wallets
-  async getWallets(): Promise<Wallet[]> {
-    const data = await this.storage.get<WalletStorage>(STORAGE_KEY)
-    return data?.wallets ?? []
-  }
-
-  // Get active wallet
-  async getActiveWallet(): Promise<Wallet | null> {
-    const data = await this.storage.get<WalletStorage>(STORAGE_KEY)
-    if (!data?.activeWalletAddress) return null
-
-    return data.wallets.find((w) => w.baseAddress === data.activeWalletAddress) ?? null
-  }
-
   // Get active account address
   async getActiveAccount(): Promise<string | null> {
     const data = await this.storage.get<WalletStorage>(STORAGE_KEY)
     return data?.activeAccountAddress ?? null
+  }
+
+  // Read the wallet list, active wallet and active account from one storage
+  // read, so the three values always describe the same state.
+  async getSnapshot(): Promise<{
+    wallets: Wallet[]
+    activeWallet: Wallet | null
+    activeAccount: string | null
+  }> {
+    const data = await this.storage.get<WalletStorage>(STORAGE_KEY)
+    return {
+      wallets: data?.wallets ?? [],
+      activeWallet: data?.wallets.find((w) => w.baseAddress === data.activeWalletAddress) ?? null,
+      activeAccount: data?.activeAccountAddress ?? null,
+    }
   }
 
   // Create new wallet
@@ -62,8 +65,96 @@ export class WalletService {
     return await this.saveWallet(keyStore, password, name || 'Imported Wallet')
   }
 
+  // Import a keystore file (Syrius / znn-cli). The wallet keeps the file's
+  // password, re-encrypted here with this wallet's stronger KDF params.
+  async importKeystore(fileText: string, password: string, name?: string): Promise<Wallet> {
+    const keyFile = parseKeystoreFile(fileText)
+    let keyStore: KeyStore
+    try {
+      keyStore = await KeyFile.setPassword(password).decrypt(keyFile)
+    } catch {
+      throw new Error('Incorrect password for this keystore file')
+    }
+    return await this.saveWallet(keyStore, password, name || 'Imported Wallet')
+  }
+
+  // Export a wallet as a keystore file Syrius can import, encrypted with the
+  // wallet's own password (verified first; wrong guesses count toward lockout).
+  async exportKeystore(address: string, password: string): Promise<SyriusKeystoreFile> {
+    const keyStore = await this.decryptWithPassword(address, password)
+    return await toSyriusKeystoreFile(keyStore, password)
+  }
+
+  // Decrypt a stored wallet's key file, counting failures toward the lockout.
+  private async decryptWithPassword(address: string, password: string): Promise<KeyStore> {
+    this.assertNotLockedOut(address)
+
+    const data = await this.storage.get<WalletStorage>(STORAGE_KEY)
+    const wallet = data?.wallets.find((w) => w.baseAddress === address)
+    if (!wallet) throw new Error('Wallet not found')
+    this.assertNotLedger(wallet, 'This')
+
+    try {
+      const keyStore = await KeyFile.setPassword(password).decrypt(wallet.encryptedKeyFile)
+      this.failedAttempts.delete(address)
+      return keyStore
+    } catch {
+      this.recordFailedAttempt(address)
+      throw new Error('Incorrect password')
+    }
+  }
+
+  /**
+   * Add a Ledger wallet from account 0's public key (read from the device after
+   * the user confirmed the address on it). No keyfile, no password.
+   */
+  async addLedgerWallet(publicKeyHex: string, name?: string): Promise<Wallet> {
+    const keyStore = new LedgerKeyStore({
+      accounts: [{ address: '', index: 0, publicKey: publicKeyHex }],
+    } as unknown as Wallet)
+    const baseAddress = keyStore.getBaseAddress().toString()
+    const data = (await this.storage.get<WalletStorage>(STORAGE_KEY)) ?? {
+      wallets: [],
+      activeWalletAddress: null,
+      activeAccountAddress: null,
+    }
+    if (data.wallets.some((w) => w.baseAddress === baseAddress)) {
+      throw new Error('This wallet has already been added')
+    }
+    const wallet: Wallet = {
+      name: name || 'Ledger',
+      baseAddress,
+      kind: 'ledger',
+      // Placeholder: Ledger wallets have no keyfile; every keyfile path checks kind first.
+      encryptedKeyFile: {
+        baseAddress,
+        crypto: { argon2Params: { salt: '' }, cipherData: '', cipherName: '', kdf: '', nonce: '' },
+        timestamp: 0,
+        version: 0,
+      },
+      accounts: [{ address: baseAddress, index: 0, label: 'Account 1', publicKey: publicKeyHex }],
+      createdAt: Date.now(),
+    }
+    data.wallets.push(wallet)
+    data.activeWalletAddress = baseAddress
+    data.activeAccountAddress = baseAddress
+    await this.storage.set(STORAGE_KEY, data)
+    sessionManager.unlock(baseAddress, new LedgerKeyStore(wallet).asKeyStore())
+    return wallet
+  }
+
+  private assertNotLedger(wallet: Wallet | undefined, what: string): void {
+    if (isLedgerWallet(wallet)) throw new Error(`${what} is not available for Ledger wallets`)
+  }
+
   // Shared logic for saving a wallet
   private async saveWallet(keyStore: KeyStore, password: string, name: string): Promise<Wallet> {
+    const baseAddress = keyStore.getBaseAddress().toString()
+    const existing = await this.storage.get<WalletStorage>(STORAGE_KEY)
+    if (existing?.wallets.some((w) => w.baseAddress === baseAddress)) {
+      throw new Error('This wallet has already been added')
+    }
+
     const keyFile = KeyFile.setPassword(password)
     // Encrypt with strong KDF params; the SDK persists them in the keyfile.
     const encryptedKeyFile = await keyFile.encrypt(keyStore, KDF_CONFIG)
@@ -102,8 +193,8 @@ export class WalletService {
     return wallet
   }
 
-  // Unlock wallet with password
-  async unlockWallet(address: string, password: string): Promise<void> {
+  // Throw while a wallet is in its lockout window after repeated wrong passwords.
+  private assertNotLockedOut(address: string): void {
     const failed = this.failedAttempts.get(address)
 
     if (failed && failed.count >= MAX_UNLOCK_ATTEMPTS) {
@@ -115,12 +206,31 @@ export class WalletService {
         throw new Error(`Too many attempts. Try again in ${remainingSec} seconds.`)
       }
     }
+  }
+
+  private recordFailedAttempt(address: string): void {
+    const current = this.failedAttempts.get(address) ?? { count: 0, lastAttemptAt: 0 }
+    this.failedAttempts.set(address, {
+      count: current.count + 1,
+      lastAttemptAt: Date.now(),
+    })
+  }
+
+  // Unlock wallet with password
+  async unlockWallet(address: string, password: string): Promise<void> {
+    this.assertNotLockedOut(address)
 
     const data = await this.storage.get<WalletStorage>(STORAGE_KEY)
     const wallet = data?.wallets.find((w) => w.baseAddress === address)
 
     if (!wallet) {
       throw new Error('Wallet not found')
+    }
+
+    // Ledger: nothing to decrypt; the device is asked when a block is signed.
+    if (isLedgerWallet(wallet)) {
+      sessionManager.unlock(address, new LedgerKeyStore(wallet).asKeyStore())
+      return
     }
 
     try {
@@ -137,20 +247,67 @@ export class WalletService {
       // the unlock.
       if (KeyFile.needsUpgrade(wallet.encryptedKeyFile, KDF_CONFIG)) {
         try {
-          wallet.encryptedKeyFile = await keyFile.encrypt(keyStore, KDF_CONFIG)
-          await this.storage.set(STORAGE_KEY, data!)
+          const upgraded = await keyFile.encrypt(keyStore, KDF_CONFIG)
+          // Re-read after the slow encrypt and patch only this wallet's
+          // keyfile, so a change another window saved meanwhile survives.
+          // A key file that differs from the decrypted one was replaced (a
+          // delete and re-import), and stays.
+          const latest = await this.storage.get<WalletStorage>(STORAGE_KEY)
+          const target = latest?.wallets.find((w) => w.baseAddress === address)
+          if (
+            latest &&
+            target &&
+            JSON.stringify(target.encryptedKeyFile) === JSON.stringify(wallet.encryptedKeyFile)
+          ) {
+            target.encryptedKeyFile = upgraded
+            await this.storage.set(STORAGE_KEY, latest)
+          }
         } catch (err) {
           console.error('Failed to upgrade wallet KDF on unlock:', err)
         }
       }
     } catch {
-      const current = this.failedAttempts.get(address) ?? { count: 0, lastAttemptAt: 0 }
-      this.failedAttempts.set(address, {
-        count: current.count + 1,
-        lastAttemptAt: Date.now(),
-      })
+      this.recordFailedAttempt(address)
       throw new Error('Invalid password')
     }
+  }
+
+  // Re-encrypt a wallet's key file under a new password. The current password
+  // is verified by decrypting the stored key file, so this works whether or not
+  // the wallet is unlocked, and wrong guesses count toward the unlock lockout.
+  // The unlocked session (if any) is unaffected: the keys themselves don't change.
+  async changePassword(address: string, currentPassword: string, newPassword: string): Promise<void> {
+    this.assertNotLockedOut(address)
+
+    const data = await this.storage.get<WalletStorage>(STORAGE_KEY)
+    const wallet = data?.wallets.find((w) => w.baseAddress === address)
+    if (!wallet) throw new Error('Wallet not found')
+    this.assertNotLedger(wallet, 'Changing the password')
+
+    let keyStore: KeyStore
+    try {
+      keyStore = await KeyFile.setPassword(currentPassword).decrypt(wallet.encryptedKeyFile)
+    } catch {
+      this.recordFailedAttempt(address)
+      throw new Error('Current password is incorrect')
+    }
+    this.failedAttempts.delete(address)
+
+    const reEncrypted = await KeyFile.setPassword(newPassword).encrypt(keyStore, KDF_CONFIG)
+
+    // Re-read after the slow KDF and patch only this wallet's key file, so
+    // changes another window saved meanwhile survive. If the key file itself
+    // changed (another password change, or a delete and re-import), don't
+    // overwrite it: the user would end up with a password they didn't expect.
+    const latest = await this.storage.get<WalletStorage>(STORAGE_KEY)
+    const target = latest?.wallets.find((w) => w.baseAddress === address)
+    if (!latest || !target) throw new Error('Wallet not found')
+    if (JSON.stringify(target.encryptedKeyFile) !== JSON.stringify(wallet.encryptedKeyFile)) {
+      throw new Error('This wallet was changed in another window. Please try again.')
+    }
+
+    target.encryptedKeyFile = reEncrypted
+    await this.storage.set(STORAGE_KEY, latest)
   }
 
   // Lock wallet
@@ -185,6 +342,32 @@ export class WalletService {
     // Find next available index
     const maxIndex = wallet.accounts.reduce((max, acc) => Math.max(max, acc.index), -1)
     const newIndex = maxIndex + 1
+
+    if (isLedgerWallet(wallet)) {
+      // The user confirms the new address on the device before it is stored.
+      const app = await getLedgerApp()
+      await app.ensureZenonApp()
+      const base = wallet.accounts.find((a) => a.index === 0)?.publicKey
+      if (!base || Buffer.from(await app.publicKey(0)).toString('hex') !== base) {
+        throw new Error('This Ledger does not hold this wallet (different device or seed)')
+      }
+      const publicKey = Buffer.from(await app.publicKey(newIndex, true)).toString('hex')
+      const probe = new LedgerKeyStore({ accounts: [{ index: newIndex, publicKey }] } as unknown as Wallet)
+      const ledgerAccount: WalletAccount = {
+        address: probe.getKeyPair(newIndex).getAddress().toString(),
+        index: newIndex,
+        label: label || `Account ${newIndex + 1}`,
+        publicKey,
+      }
+      // Re-read: the device confirmation can take a while and storage may have changed.
+      const latest = await this.storage.get<WalletStorage>(STORAGE_KEY)
+      const target = latest?.wallets.find((w) => w.baseAddress === walletAddress)
+      if (!latest || !target) throw new Error('Wallet not found')
+      if (!target.accounts.some((a) => a.index === newIndex)) target.accounts.push(ledgerAccount)
+      await this.storage.set(STORAGE_KEY, latest)
+      sessionManager.unlock(walletAddress, new LedgerKeyStore(target).asKeyStore())
+      return ledgerAccount
+    }
 
     // Derive new keypair
     const keyPair = keyStore.getKeyPair(newIndex)

@@ -20,6 +20,7 @@ import {
 } from 'nom-ui'
 
 import {EyeIcon, EyeOffIcon, LockOpenIcon} from 'lucide-vue-next'
+import {useWallet} from '@/core'
 
 interface Props {
   open: boolean
@@ -43,6 +44,12 @@ const isOpen = computed({
     if (!value) emit('cancel')
   },
 })
+
+// Ledger wallets have no password: the device confirms each transaction.
+const wallets = useWallet()
+const isLedger = computed(
+  () => wallets.wallets.value.find((w) => w.baseAddress === props.walletAddress)?.kind === 'ledger'
+)
 
 const password = ref('')
 const showPassword = ref(false)
@@ -82,6 +89,11 @@ watch(
 )
 
 function handleUnlock() {
+  if (isLedger.value) {
+    isUnlocking.value = true
+    emit('unlock', '')
+    return
+  }
   if (!password.value) {
     error.value = 'Password is required'
     return
@@ -113,7 +125,11 @@ function handleUnlock() {
               {{ walletAddress }}
             </div>
           </FieldDescription>
-          <FieldGroup>
+          <p v-if="isLedger" class="text-sm text-muted-foreground">
+            Ledger wallet: no password needed. You confirm each transaction on the device.
+          </p>
+          <p v-if="isLedger && error" class="text-sm text-destructive">{{ error }}</p>
+          <FieldGroup v-if="!isLedger">
             <Field>
               <FieldLabel for="unlock-dialog-password"> Password </FieldLabel>
               <InputGroup>

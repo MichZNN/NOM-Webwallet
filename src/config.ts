@@ -13,7 +13,11 @@ export const STORAGE_KEY_CHAIN_ID = 'nom-wallet-chain-id'
 export const STORAGE_KEY_NETWORK_ID = 'nom-wallet-network-id'
 
 /** Built-in node URLs offered in the network selector. */
-export const DEFAULT_NODES: string[] = [DEFAULT_NODE_URL, 'wss://my.hc1node.com:35998']
+export const DEFAULT_NODES: string[] = [
+  DEFAULT_NODE_URL,
+  'wss://my.hc1node.com:35998',
+  'wss://node.zenon.nom.co:35998',
+]
 
 /**
  * Websocket connect timeout (ms) for node switches. The SDK defaults to 30s,
@@ -86,3 +90,75 @@ export const KDF_CONFIG = {
   hashLength: 32,
   parallelism: 4,
 } as const
+
+// --- dApp surfaces ---
+
+/** phase 1 — wallet-service.ts. Moved here so the service worker (phase 3a/3b)
+ *  can read `activeAccountAddress` without importing wallet-service.ts and its
+ *  SDK dependency. */
+export const STORAGE_KEY_WALLETS = 'nom-wallet-storage'
+
+/** phase 1 — dapp-approvals.ts. Cap on a single document's pending-approval
+ *  queue; enforced per document, not shared across surfaces. */
+export const MAX_PENDING_DAPP_REQUESTS = 5
+
+/** phase 2 — WalletConnect surface. */
+export const WALLETCONNECT_PROJECT_ID: string = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID ?? ''
+/** phase 2 — WalletConnect surface. */
+export const WALLETCONNECT_ENABLED = WALLETCONNECT_PROJECT_ID.length >= 32
+/** phase 2 — WalletConnect surface. The wallet's own peer identity, rendered
+ *  as text and an image inside every dApp that pairs with it. */
+export const WALLETCONNECT_METADATA = {
+  name: 'NoM Wallet',
+  description: 'A secure cryptocurrency wallet for the Zenon Network of Momentum.',
+  url: 'https://github.com/digitalSloth/nom-webwallet',
+  icons: ['https://raw.githubusercontent.com/digitalSloth/nom-webwallet/main/icons/icon-128.png'],
+}
+/** phase 2 — WalletConnect surface. */
+export const WC_STORAGE_PREFIX = 'nom-wallet-wc:'
+
+/** phase 3a — site-permissions.ts. */
+export const STORAGE_KEY_SITE_PERMISSIONS = 'nom-wallet-site-permissions'
+/** site-permissions.ts. Minimum gap between two lastUsedAt writes for one origin. */
+export const SITE_PERMISSION_TOUCH_INTERVAL_MS = 60 * 1000
+
+/** phase 3b — approval-inbox.ts. */
+export const SESSION_KEY_PENDING_REQUESTS = 'nom-wallet.pendingRequests'
+/** phase 3b — approval-inbox.ts. */
+export const SESSION_KEY_APPROVAL_WINDOW_ID = 'nom-wallet.approvalWindowId'
+/** phase 3b — approval-inbox.ts. */
+export const SESSION_KEY_OUTCOMES = 'nom-wallet.outcomes'
+/** phase 3b — approval-inbox.ts. */
+export const APPROVAL_WINDOW_IDLE_MS = 5 * 60 * 1000
+/**
+ * phase 3b — approval-inbox.ts. Retention for outcomes that have already been
+ * delivered, for duplicate suppression only. Undelivered outcomes are never
+ * expired.
+ */
+export const DELIVERED_OUTCOME_TTL_MS = 60 * 1000
+
+/** App.vue — the extension's WalletConnect popup window, reused across opens. */
+export const SESSION_KEY_WALLETCONNECT_WINDOW_ID = 'nom-wallet.walletConnectWindowId'
+
+/** useSwaps.ts. HTLC swap records per chain id (no secrets: preimages are derived). */
+export const STORAGE_KEY_SWAPS = 'nom-wallet-htlc-swaps'
+/** useSwaps.ts. Gap between two scans of the HTLC contract while the wallet is open. */
+export const SWAP_POLL_MS = 10_000
+
+/** useAutoReceive.ts. Storage key for the auto-receive on/off setting (default on). */
+export const STORAGE_KEY_AUTO_RECEIVE = 'nom-wallet-auto-receive'
+/** useAutoReceive.ts. Gap between two checks for incoming transactions. */
+export const AUTO_RECEIVE_POLL_MS = 15_000
+
+/** tx-tracker.ts. Storage key for the transactions still being tracked. */
+export const STORAGE_KEY_TRACKED_TRANSACTIONS = 'nom-wallet-tracked-transactions'
+/** tx-tracker.ts. Gap between two reads of a tracked transaction, and the cap on one read. */
+export const TX_TRACK_POLL_MS = 5000
+/** tx-tracker.ts. How long a transaction is tracked after publish before the wallet gives up. */
+export const TX_TRACK_TIMEOUT_MS = 5 * 60 * 1000
+/**
+ * transaction-service.ts. Ceiling on one send once it leaves the queue. It
+ * covers the node connect (CONNECT_TIMEOUT_MS), the extension's 120 s PoW
+ * ceiling (extension-pow-provider.ts) and the send's RPC calls, with margin.
+ */
+export const SEND_TIMEOUT_MS = 3 * 60 * 1000

@@ -1,0 +1,17 @@
+# Fork addition. On the server: put this file in DEPLOY_PATH; the deploy
+# workflow runs `docker compose pull && docker compose up -d` there.
+services:
+  nom-webwallet:
+    image: ${NOM_WEBWALLET_IMAGE:-ghcr.io/michznn/nom-webwallet:latest}
+    container_name: nom-webwallet
+    restart: unless-stopped
+    # Bound to localhost: expose it through your HTTPS reverse proxy.
+    ports:
+      - '127.0.0.1:${NOM_WEBWALLET_PORT:-8080}:8080'
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    security_opt:
+      - no-new-privileges:true

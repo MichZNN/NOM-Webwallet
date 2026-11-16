@@ -51,6 +51,16 @@ export class AccountService extends ChainService {
     return await this.zenon.ledger.getUnreceivedBlocksByAddress(addr, pageIndex, pageSize)
   }
 
+  // Account blocks, newest first
+  async getAccountBlocks(
+    address: string,
+    pageIndex: number = 0,
+    pageSize: number = 10
+  ): Promise<AccountBlockList> {
+    await this.ensureInitialized()
+    return await this.zenon.ledger.getAccountBlocksByPage(Address.parse(address), pageIndex, pageSize)
+  }
+
   // Get delegated pillar information
   async getDelegatedPillar(address: string): Promise<DelegationInfo | null> {
     await this.ensureInitialized()

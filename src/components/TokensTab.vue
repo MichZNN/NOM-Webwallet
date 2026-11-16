@@ -58,6 +58,13 @@ defineExpose({
 
 <template>
   <div>
+    <RouterLink
+      to="/tokens"
+      class="mb-4 flex items-center justify-between rounded-md border px-4 py-3 text-sm hover:bg-muted"
+    >
+      <span>Issue or manage your own tokens</span>
+      <span aria-hidden="true">→</span>
+    </RouterLink>
     <div v-if="account.isLoading.value" class="space-y-2">
       <Skeleton v-for="n in 4" :key="n" class="h-14 w-full rounded-md" />
     </div>

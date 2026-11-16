@@ -28,8 +28,33 @@ export const router = createRouter({
       meta: { requiresWallet: true },
     },
     {
+      path: '/swaps',
+      component: () => import('@/pages/Swaps.vue'),
+      meta: { requiresWallet: true },
+    },
+    {
+      path: '/accelerator',
+      component: () => import('@/pages/Accelerator.vue'),
+      meta: { requiresWallet: true },
+    },
+    {
+      path: '/tokens',
+      component: () => import('@/pages/Tokens.vue'),
+      meta: { requiresWallet: true },
+    },
+    {
+      path: '/nodes',
+      component: () => import('@/pages/Nodes.vue'),
+      meta: { requiresWallet: true },
+    },
+    {
       path: '/token/:tokenStandard',
       component: () => import('@/pages/TokenDetails.vue'),
+      meta: { requiresWallet: true },
+    },
+    {
+      path: '/walletconnect',
+      component: () => import('@/pages/WalletConnect.vue'),
       meta: { requiresWallet: true },
     },
     // Catch-all: unknown paths fall back to home (which the guard re-routes to

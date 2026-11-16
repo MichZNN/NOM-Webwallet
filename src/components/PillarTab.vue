@@ -89,7 +89,6 @@ async function handleDelegate(pillarName: string) {
       pillarName,
       shouldUndelegate
     )
-    toast.show('Successfully delegated to pillar', 'success')
     emit('delegationSuccess')
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Failed to delegate to pillar'
@@ -102,6 +101,14 @@ async function handleDelegate(pillarName: string) {
 
 <template>
   <div class="space-y-4">
+    <RouterLink
+      to="/nodes"
+      class="flex items-center justify-between rounded-md border px-4 py-3 text-sm hover:bg-muted"
+    >
+      <span>Run a pillar or sentinel? Manage it here</span>
+      <span aria-hidden="true">→</span>
+    </RouterLink>
+
     <!-- Search and Sort Controls -->
     <div class="flex flex-col gap-2 sm:flex-row">
       <Input

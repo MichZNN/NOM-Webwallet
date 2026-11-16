@@ -4,17 +4,28 @@ import type {Wallet} from '@/types'
 import WalletList from './WalletList.vue'
 import UnlockWalletDialog from './UnlockWalletDialog.vue'
 import ExportMnemonicDialog from './ExportMnemonicDialog.vue'
+import ChangePasswordDialog from './ChangePasswordDialog.vue'
+import ExportKeystoreDialog from './ExportKeystoreDialog.vue'
 import NetworkSelector from './NetworkSelector.vue'
+import NetworkSwitch from './NetworkSwitch.vue'
+import {useConnectedSites} from '@/core/composables/useConnectedSites'
+import {useAutoReceive} from '@/core'
 import {
   Button,
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemTitle,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
+  Switch,
   useTheme,
 } from 'nom-ui'
 import {MonitorIcon, MoonIcon, SettingsIcon, SunIcon} from 'lucide-vue-next'
@@ -46,6 +57,21 @@ const emit = defineEmits<{
 }>()
 
 const { mode, setTheme } = useTheme()
+
+// Connected-sites (§6.7) — extension only. useConnectedSites.ts's underlying
+// storage calls already no-op in the web app, but it's imported by path here
+// rather than from the composables barrel so no other page pulls it in.
+// Bound to a local const because the template compiler can't resolve the
+// ambient __IS_EXTENSION__ global directly.
+const isExtension = __IS_EXTENSION__
+const connectedSites = useConnectedSites()
+
+watch(
+  () => props.open,
+  (open) => {
+    if (open && isExtension) void connectedSites.refresh()
+  }
+)
 
 const isOpen = computed({
   get: () => props.open,
@@ -102,6 +128,28 @@ function handleExportMnemonicRequest(address: string) {
   }
 }
 
+const autoReceive = useAutoReceive()
+
+// Export keystore dialog state
+const exportKeystoreTarget = ref<{ address: string; name: string } | null>(null)
+
+function handleExportKeystoreRequest(address: string) {
+  const wallet = props.wallets.find((w) => w.baseAddress === address)
+  if (wallet) {
+    exportKeystoreTarget.value = { address, name: wallet.name }
+  }
+}
+
+// Change password dialog state
+const changePasswordTarget = ref<{ address: string; name: string } | null>(null)
+
+function handleChangePasswordRequest(address: string) {
+  const wallet = props.wallets.find((w) => w.baseAddress === address)
+  if (wallet) {
+    changePasswordTarget.value = { address, name: wallet.name }
+  }
+}
+
 function showExportDialog(address: string, mnemonic: string) {
   const wallet = props.wallets.find((w) => w.baseAddress === address)
   if (wallet) {
@@ -135,13 +183,28 @@ defineExpose({
       </DialogHeader>
 
       <Tabs default-value="wallet" class="w-full">
-        <TabsList class="mb-4 grid w-full grid-cols-3">
+        <TabsList class="mb-4 grid w-full" :class="isExtension ? 'grid-cols-4' : 'grid-cols-3'">
           <TabsTrigger value="wallet"> Wallet </TabsTrigger>
           <TabsTrigger value="network"> Network </TabsTrigger>
+          <TabsTrigger v-if="isExtension" value="sites"> Connected Sites </TabsTrigger>
           <TabsTrigger value="ui"> Appearance </TabsTrigger>
         </TabsList>
 
         <TabsContent value="wallet">
+          <label class="mb-4 flex items-center justify-between gap-4 rounded-md border p-3">
+            <span>
+              <span class="block text-sm font-medium">Auto-receive</span>
+              <span class="block text-xs text-muted-foreground">
+                Automatically receive incoming transactions for unlocked wallets while the wallet
+                is open
+              </span>
+            </span>
+            <Switch
+              :model-value="autoReceive.enabled.value"
+              @update:model-value="(v: boolean) => autoReceive.setEnabled(v)"
+            />
+          </label>
+
           <!-- Wallet List with embedded Account Lists -->
           <WalletList
             :wallets="wallets"
@@ -152,6 +215,8 @@ defineExpose({
             @delete="(address) => emit('delete-wallet', address)"
             @rename="(address, newName) => emit('rename-wallet', address, newName)"
             @export-mnemonic="handleExportMnemonicRequest"
+            @change-password="handleChangePasswordRequest"
+            @export-keystore="handleExportKeystoreRequest"
             @derive-account="(walletAddress) => emit('derive-account', walletAddress)"
             @select-account="(address) => emit('select-account', address)"
             @rename-account="
@@ -167,6 +232,7 @@ defineExpose({
         </TabsContent>
 
         <TabsContent value="network">
+          <NetworkSwitch class="mb-4" />
           <NetworkSelector
             :current-node="currentNode"
             @select="(nodeUrl) => emit('select-network', nodeUrl)"
@@ -174,6 +240,37 @@ defineExpose({
               (chainId, networkId) => emit('update-network-config', chainId, networkId)
             "
           />
+        </TabsContent>
+
+        <TabsContent v-if="isExtension" value="sites">
+          <div class="space-y-3">
+            <div v-if="connectedSites.sites.value.length === 0" class="py-8 text-center text-muted-foreground">
+              <p>No connected sites</p>
+            </div>
+
+            <template v-else>
+              <Item v-for="site in connectedSites.sites.value" :key="site.origin" variant="muted">
+                <ItemContent class="min-w-0 flex-1">
+                  <ItemTitle>{{ site.title || site.origin }}</ItemTitle>
+                  <ItemDescription>{{ site.origin }}</ItemDescription>
+                </ItemContent>
+                <ItemActions>
+                  <Button variant="outline" size="sm" @click="connectedSites.revokeOrigin(site.origin)">
+                    Revoke
+                  </Button>
+                </ItemActions>
+              </Item>
+
+              <Button
+                variant="outline"
+                class="w-full"
+                :disabled="connectedSites.isLoading.value"
+                @click="connectedSites.revokeAllSites()"
+              >
+                Revoke all
+              </Button>
+            </template>
+          </div>
         </TabsContent>
 
         <TabsContent value="ui">
@@ -206,6 +303,12 @@ defineExpose({
               </Button>
             </div>
           </div>
+
+          <p class="mt-6 text-xs text-muted-foreground">
+            Portions © 2025 Reown, Inc. All Rights Reserved. WalletConnect pairing uses
+            <code>@walletconnect/sign-client</code> under the WalletConnect Community License
+            Agreement.
+          </p>
         </TabsContent>
       </Tabs>
     </DialogContent>
@@ -240,6 +343,22 @@ defineExpose({
       :mnemonic="exportMnemonic.mnemonic"
       :wallet-name="exportMnemonic.name"
       @close="exportDialogVisible = false"
+    />
+
+    <!-- Export Keystore Dialog -->
+    <ExportKeystoreDialog
+      v-if="exportKeystoreTarget"
+      :wallet-address="exportKeystoreTarget.address"
+      :wallet-name="exportKeystoreTarget.name"
+      @close="exportKeystoreTarget = null"
+    />
+
+    <!-- Change Password Dialog -->
+    <ChangePasswordDialog
+      v-if="changePasswordTarget"
+      :wallet-address="changePasswordTarget.address"
+      :wallet-name="changePasswordTarget.name"
+      @close="changePasswordTarget = null"
     />
   </Teleport>
 </template>

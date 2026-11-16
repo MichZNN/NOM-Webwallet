@@ -25,7 +25,9 @@ import {
   CheckIcon,
   EyeIcon,
   EyeOffIcon,
+  FileKeyIcon,
   KeyIcon,
+  LockKeyholeIcon,
   LockIcon,
   LockOpenIcon,
   MoreVerticalIcon,
@@ -47,6 +49,8 @@ const emit = defineEmits<{
   lock: [address: string]
   delete: [address: string]
   exportMnemonic: [address: string]
+  exportKeystore: [address: string]
+  changePassword: [address: string]
   rename: [address: string, newName: string]
   deriveAccount: [walletAddress: string]
   selectAccount: [address: string]
@@ -254,9 +258,23 @@ function handleAddWalletCancel() {
                 }}
               </DropdownMenuItem>
               <DropdownMenuSeparator v-if="hiddenAccountCount(wallet) > 0" />
-              <DropdownMenuItem @click="handleExportMnemonic(wallet.baseAddress)">
+              <DropdownMenuItem
+                v-if="wallet.kind !== 'ledger'"
+                @click="handleExportMnemonic(wallet.baseAddress)">
                 <KeyIcon class="mr-2 h-4 w-4" />
                 Export Mnemonic
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                v-if="wallet.kind !== 'ledger'"
+                @click="emit('exportKeystore', wallet.baseAddress)">
+                <FileKeyIcon class="mr-2 h-4 w-4" />
+                Export Keystore File
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                v-if="wallet.kind !== 'ledger'"
+                @click="emit('changePassword', wallet.baseAddress)">
+                <LockKeyholeIcon class="mr-2 h-4 w-4" />
+                Change Password
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -289,6 +307,11 @@ function handleAddWalletCancel() {
         />
       </div>
     </div>
+
+    <Button variant="outline" class="w-full" @click="addWalletDialogOpen = true">
+      <PlusIcon class="mr-2 h-4 w-4" />
+      Add Wallet
+    </Button>
 
     <!-- Add Wallet Dialog -->
     <Dialog v-model:open="addWalletDialogOpen">
