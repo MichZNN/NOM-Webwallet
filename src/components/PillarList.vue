@@ -82,7 +82,7 @@ function formatApr(apr: number): string {
         <!-- Button row -->
         <Button
           @click="emit('delegate', pillarInfo.name)"
-          :disabled="isDelegating || isWalletLocked || currentDelegatedPillar === pillarInfo.name"
+          :disabled="isDelegating || currentDelegatedPillar === pillarInfo.name"
           size="sm"
           class="w-full"
           :variant="currentDelegatedPillar === pillarInfo.name ? 'secondary' : 'default'"
@@ -131,7 +131,7 @@ function formatApr(apr: number): string {
         <div class="text-right">
           <Button
             @click="emit('delegate', pillarInfo.name)"
-            :disabled="isDelegating || isWalletLocked || currentDelegatedPillar === pillarInfo.name"
+            :disabled="isDelegating || currentDelegatedPillar === pillarInfo.name"
             size="sm"
             :variant="currentDelegatedPillar === pillarInfo.name ? 'secondary' : 'default'"
           >

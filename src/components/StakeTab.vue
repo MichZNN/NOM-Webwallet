@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed, onMounted, ref, watch} from 'vue'
+import {computed, inject, onMounted, ref, watch} from 'vue'
 import {useAccount, useStake, useWallet} from '@/core'
 import {MIN_STAKE_AMOUNT_ZNN, STAKE_DURATION_OPTIONS} from '@/config'
 import {extractNumberDecimals} from 'znn-typescript-sdk'
@@ -27,6 +27,10 @@ const props = withDefaults(defineProps<StakeTabProps>(), {
   isActive: false,
   isWalletLocked: false,
 })
+
+// A locked wallet can't sign: the action button asks to unlock instead of
+// sitting disabled without saying why.
+const requestUnlock = inject<(path?: string) => void>('requestUnlock', () => {})
 
 const emit = defineEmits<{
   showToast: [message: string, type: 'success' | 'error' | 'info' | 'warning']
@@ -120,7 +124,7 @@ async function handleStake() {
   // Check if wallet is unlocked
   const activeWallet = wallet.activeWallet.value
   if (!activeWallet || !wallet.isActiveWalletUnlocked.value) {
-    emit('showToast', 'Please unlock your wallet first', 'warning')
+    requestUnlock()
     return
   }
 
@@ -157,7 +161,7 @@ async function handleCancel(stakeId: string) {
   // Check if wallet is unlocked
   const activeWallet = wallet.activeWallet.value
   if (!activeWallet || !wallet.isActiveWalletUnlocked.value) {
-    emit('showToast', 'Please unlock your wallet first', 'warning')
+    requestUnlock()
     return
   }
 
@@ -233,10 +237,12 @@ async function handleCancel(stakeId: string) {
         </Alert>
 
         <!-- Stake Button -->
+        <Button v-if="isWalletLocked" class="w-full" @click="requestUnlock()">Unlock to stake</Button>
         <Button
+          v-else
           @click="handleStake"
           class="w-full"
-          :disabled="stake.isStaking.value || isWalletLocked"
+          :disabled="stake.isStaking.value"
         >
           {{ stake.isStaking.value ? 'Staking...' : 'Stake ZNN' }}
         </Button>

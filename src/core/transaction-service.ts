@@ -135,6 +135,9 @@ export class TransactionService extends ChainService {
             // Approved on the device after we reported a timeout: don't send.
             if (gaveUp) throw new Error('Signed after the time limit; not sent')
           }
+          // Reported as timed out already (e.g. a slow node before PoW): don't
+          // publish behind the user's back on a now-stale frontier.
+          if (gaveUp) throw new Error('Gave up before publishing; not sent')
           beforePublish?.()
           stage = 'publishing'
           return this.zenon.ledger.publishRawTransaction(prepared)

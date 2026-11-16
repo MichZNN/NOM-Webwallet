@@ -15,14 +15,20 @@ export function withTimeout<T>(
   return new Promise<T>((resolve, reject) => {
     let timer: ReturnType<typeof setTimeout>
     if (paused) {
+      // Count real elapsed time (background tabs throttle timers to as little
+      // as once a minute), and only for intervals that started unpaused.
       let left = ms
+      let last = Date.now()
+      let wasPaused = paused()
       const wait = () => {
-        const slice = Math.min(PAUSE_TICK_MS, left)
         timer = setTimeout(() => {
-          if (!paused()) left -= slice
+          const now = Date.now()
+          if (!wasPaused) left -= now - last
+          last = now
+          wasPaused = paused()
           if (left <= 0) reject(new Error(message))
           else wait()
-        }, slice)
+        }, Math.min(PAUSE_TICK_MS, Math.max(left, 0)))
       }
       wait()
     } else {

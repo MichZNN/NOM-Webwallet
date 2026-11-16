@@ -95,7 +95,7 @@ const stakesWithStatus = computed(() => {
             <Button
               size="sm"
               variant="destructive"
-              :disabled="!stake.canCancel || isCanceling || isWalletLocked"
+              :disabled="!stake.canCancel || isCanceling"
               @click="emit('cancel', stake.id.toString())"
             >
               {{ cancelingStakeId === stake.id.toString() ? 'Canceling...' : 'Cancel' }}

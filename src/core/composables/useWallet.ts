@@ -21,6 +21,20 @@ const isActiveWalletUnlocked = computed(() => {
 
 const hasWallets = computed(() => wallets.value.length > 0)
 
+// Sessions expire lazily (SessionManager checks on access), so poll for that:
+// otherwise the UI keeps showing an unlocked wallet that can no longer sign.
+const LOCK_POLL_MS = 5000
+if (typeof window !== 'undefined') {
+  setInterval(() => {
+    if (unlockedWallets.value.length === 0) return
+    const now = WalletService.getInstance().getUnlockedWallets()
+    if (now.length !== unlockedWallets.value.length) {
+      unlockedWallets.value = now
+      window.dispatchEvent(new CustomEvent('wallet-status-changed'))
+    }
+  }, LOCK_POLL_MS)
+}
+
 export function useWallet() {
   const walletService = WalletService.getInstance()
 

@@ -183,6 +183,37 @@ describe('TransactionService send queue', () => {
     await expect(p).resolves.toBe('fused')
   })
 
+  it('still times out a hang after PoW, counting only the time outside PoW', async () => {
+    const pow = trackPow(() => new Promise<string>((r) => setTimeout(() => r('nonce'), 5 * 60_000)))
+    const send = vi.fn(async () => {
+      await pow()
+      return new Promise(() => {}) // node never answers
+    })
+    const p = makeService(send).sendEmbeddedContractBlock(blockA, keyPair)
+    let settled = false
+    p.catch(() => (settled = true))
+    await vi.advanceTimersByTimeAsync(5 * 60_000 + SEND_TIMEOUT_MS - 2000)
+    expect(settled).toBe(false)
+    await vi.advanceTimersByTimeAsync(2000)
+    await expect(p).rejects.toThrow(/did not respond in time/)
+  })
+
+  it('does not publish a send it already reported as timed out', async () => {
+    const late = deferred()
+    const send = vi.fn().mockReturnValueOnce(late.promise)
+    const publishRawTransaction = vi.fn(async (b: unknown) => b)
+    const zenon = { prepareBlock: send, ledger: { publishRawTransaction } }
+    const service = new TransactionService({ getZenon: () => zenon, ensureInitialized: async () => {} } as never)
+
+    const p = service.sendEmbeddedContractBlock(blockA, keyPair)
+    const rejection = expect(p).rejects.toThrow(/outcome is unknown/)
+    await vi.advanceTimersByTimeAsync(SEND_TIMEOUT_MS)
+    await rejection
+    late.resolve('prepared late')
+    await flush()
+    expect(publishRawTransaction).not.toHaveBeenCalled()
+  })
+
   it('starts the timeout when a send leaves the queue, not when it is enqueued', async () => {
     const first = deferred()
     const send = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(new Promise(() => {}))

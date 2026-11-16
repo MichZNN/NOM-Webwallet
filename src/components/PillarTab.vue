@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed, onMounted, ref, watch} from 'vue'
+import {computed, inject, onMounted, ref, watch} from 'vue'
 import {useAccount, usePillar, useWallet} from '@/core'
 import {Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, useToast,} from 'nom-ui'
 import PillarList from './PillarList.vue'
@@ -11,6 +11,7 @@ export interface PillarTabProps {
 }
 
 const props = defineProps<PillarTabProps>()
+const requestUnlock = inject<(path?: string) => void>('requestUnlock', () => {})
 
 const emit = defineEmits<{
   showToast: [message: string, type: 'success' | 'error' | 'info']
@@ -69,7 +70,7 @@ const filteredPillars = computed(() => {
 
 async function handleDelegate(pillarName: string) {
   if (props.isWalletLocked) {
-    toast.show('Please unlock your wallet first', 'error')
+    requestUnlock()
     return
   }
 

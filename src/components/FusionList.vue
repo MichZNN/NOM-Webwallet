@@ -80,7 +80,7 @@ const fusionsWithStatus = computed(() => {
             <Button
               size="sm"
               variant="destructive"
-              :disabled="!fusion.canCancel || isCanceling || isWalletLocked"
+              :disabled="!fusion.canCancel || isCanceling"
               @click="emit('cancel', fusion.id.toString())"
             >
               {{ cancelingFusionId === fusion.id.toString() ? 'Canceling...' : 'Cancel' }}

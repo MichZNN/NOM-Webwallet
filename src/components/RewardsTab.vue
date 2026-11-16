@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed, onMounted, watch} from 'vue'
+import {computed, inject, onMounted, watch} from 'vue'
 import type {RewardType} from '@/core'
 import {runActivity, useRewards, useWallet} from '@/core'
 import {addNumberDecimals} from 'znn-typescript-sdk'
@@ -16,6 +16,10 @@ const props = withDefaults(defineProps<RewardsTabProps>(), {
   isActive: false,
   isWalletLocked: false,
 })
+
+// A locked wallet can't sign: the action button asks to unlock instead of
+// sitting disabled without saying why.
+const requestUnlock = inject<(path?: string) => void>('requestUnlock', () => {})
 
 const emit = defineEmits<{
   showToast: [message: string, type: 'success' | 'error' | 'info' | 'warning']
@@ -84,7 +88,7 @@ async function collectReward(type: RewardType) {
 
   const activeWallet = wallet.activeWallet.value
   if (!activeWallet || !wallet.isActiveWalletUnlocked.value) {
-    emit('showToast', 'Please unlock your wallet first', 'warning')
+    requestUnlock()
     return
   }
 
@@ -108,7 +112,7 @@ async function collectAllRewards() {
 
   const activeWallet = wallet.activeWallet.value
   if (!activeWallet || !wallet.isActiveWalletUnlocked.value) {
-    emit('showToast', 'Please unlock your wallet first', 'warning')
+    requestUnlock()
     return
   }
 
@@ -161,9 +165,11 @@ async function collectAllRewards() {
       <div v-if="hasAnyRewards" class="space-y-3">
         <div class="flex items-center justify-between">
           <div class="text-lg font-semibold">Total Uncollected Rewards</div>
+          <Button v-if="isWalletLocked" size="sm" @click="requestUnlock()">Unlock to collect</Button>
           <Button
+            v-else
             size="sm"
-            :disabled="rewards.isCollecting.value || isWalletLocked"
+            :disabled="rewards.isCollecting.value"
             @click="collectAllRewards"
           >
             {{ rewards.isCollecting.value ? 'Collecting...' : 'Collect All' }}

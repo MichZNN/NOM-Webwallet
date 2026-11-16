@@ -69,7 +69,7 @@ const rewardsWithAmounts = computed(() => {
             <ItemTitle>{{ rewardTypeNames[reward.type] }}</ItemTitle>
             <Button
               size="sm"
-              :disabled="isCollecting || isWalletLocked"
+              :disabled="isCollecting"
               @click="emit('collect', reward.type)"
             >
               {{ collectingType === reward.type ? 'Collecting...' : 'Collect' }}

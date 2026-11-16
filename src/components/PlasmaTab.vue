@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed, onMounted, ref, watch} from 'vue'
+import {computed, inject, onMounted, ref, watch} from 'vue'
 import {useAccount, useNetwork, usePlasma, useWallet} from '@/core'
 import {MIN_FUSE_AMOUNT_QSR} from '@/config'
 import {extractNumberDecimals} from 'znn-typescript-sdk'
@@ -42,6 +42,10 @@ const qsrBalance = computed(() => {
 })
 
 const minFuseAmount = MIN_FUSE_AMOUNT_QSR
+
+// A locked wallet can't sign: the action button asks to unlock instead of
+// sitting disabled without saying why.
+const requestUnlock = inject<(path?: string) => void>('requestUnlock', () => {})
 
 // Show the plazma.bot prompt only when the account can neither transact nor
 // self-fuse: it has no plasma (so it can't send a transaction — e.g. a fresh
@@ -147,7 +151,7 @@ async function handleFuse() {
   // Check if wallet is unlocked
   const activeWallet = wallet.activeWallet.value
   if (!activeWallet || !wallet.isActiveWalletUnlocked.value) {
-    emit('showToast', 'Please unlock your wallet first', 'warning')
+    requestUnlock()
     return
   }
 
@@ -183,7 +187,7 @@ async function handleCancel(fusionId: string) {
   // Check if wallet is unlocked
   const activeWallet = wallet.activeWallet.value
   if (!activeWallet || !wallet.isActiveWalletUnlocked.value) {
-    emit('showToast', 'Please unlock your wallet first', 'warning')
+    requestUnlock()
     return
   }
 
@@ -274,10 +278,12 @@ async function handleCancel(fusionId: string) {
         </Alert>
 
         <!-- Fuse Button -->
+        <Button v-if="isWalletLocked" class="w-full" @click="requestUnlock()">Unlock to fuse</Button>
         <Button
+          v-else
           @click="handleFuse"
           class="w-full"
-          :disabled="plasma.isFusing.value || isWalletLocked"
+          :disabled="plasma.isFusing.value"
         >
           <span v-if="plasma.isFusing.value" class="flex items-center gap-2"
             ><Spinner class="size-4" />Fusing...</span
