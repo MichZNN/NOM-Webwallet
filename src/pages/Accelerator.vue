@@ -231,6 +231,11 @@ async function submitDonate() {
         <strong v-else>{{ acc.votingPillar.value }}</strong>
       </div>
 
+      <p v-else-if="!acc.isLoading.value" class="rounded-md border p-3 text-sm text-muted-foreground">
+        Voting is done by pillars. To vote, select the account that is the <strong>owner address</strong> of your
+        pillar (the address that registered it); this account owns no pillar.
+      </p>
+
       <div class="flex flex-wrap gap-2" role="group" aria-label="Filter projects">
         <Button
           v-for="f in (['all', 'voting', 'active', 'mine'] as const)"
