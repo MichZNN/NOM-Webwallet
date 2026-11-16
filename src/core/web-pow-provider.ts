@@ -5,7 +5,8 @@ import type {PowProvider} from 'znn-typescript-sdk'
  * the SDK's Blob worker, it doesn't inherit the page's CSP, so the server can
  * allow the 'unsafe-eval' the emscripten PoW module needs for that file alone.
  */
-const POW_TIMEOUT_MS = 120_000
+// Generous: a block without plasma can take minutes on a slow phone.
+const POW_TIMEOUT_MS = 10 * 60_000
 const HEX = /^[0-9a-f]+$/i
 
 let worker: Worker | null = null
@@ -46,8 +47,11 @@ export const webPowProvider: PowProvider = (hashHex, difficulty) =>
   new Promise((resolve, reject) => {
     const id = nextId++
     const timer = setTimeout(() => {
-      pending.delete(id)
-      reject(new Error('PoW timed out'))
+      // generate() is synchronous in the worker: a stuck job would block every
+      // later one, so drop the worker (the next request starts a fresh one).
+      worker?.terminate()
+      worker = null
+      failAll(new Error('PoW timed out'))
     }, POW_TIMEOUT_MS)
     pending.set(id, { resolve, reject, timer })
     try {

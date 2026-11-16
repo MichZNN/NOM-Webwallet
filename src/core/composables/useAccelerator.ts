@@ -29,6 +29,8 @@ export function useAccelerator(address: MaybeRefOrGetter<string | null>) {
   const votes = ref(new Map<string, number>())
   const votingPillar = ref<string | null>(null)
   const isLoading = ref(false)
+  /** A load finished without error (so an empty pillar list means "owns none"). */
+  const loaded = ref(false)
   const isBusy = ref(false)
   const error = ref<string | null>(null)
   let loadId = 0
@@ -70,6 +72,7 @@ export function useAccelerator(address: MaybeRefOrGetter<string | null>) {
         addr ? NodeService.getInstance().getPillarsByOwner(addr) : Promise.resolve([]),
       ])
       if (id !== loadId) return
+      loaded.value = true
       projects.value = list.list
       count.value = list.count
       balances.value = contract
@@ -123,6 +126,7 @@ export function useAccelerator(address: MaybeRefOrGetter<string | null>) {
     votes,
     votingPillar,
     isLoading,
+    loaded,
     isBusy,
     error,
     load,

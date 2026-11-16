@@ -56,16 +56,37 @@ function focus(i: number) {
   void nextTick(() => inputs.value[i]?.focus())
 }
 
-/** Pasting several words into a field spreads them over the fields from there. */
+/**
+ * Put several words into the fields from `i` on (paste, or a phone keyboard
+ * that types the space into the field). From the first field a whole phrase
+ * replaces everything and sets the length.
+ */
+function spread(i: number, parts: string[]) {
+  const next = i === 0 ? Array(24).fill('') : [...words.value]
+  if (i === 0) length.value = parts.length > 12 ? 24 : 12
+  else if (i + parts.length > length.value && i + parts.length <= 24) length.value = 24
+  parts.slice(0, 24 - i).forEach((w, k) => (next[i + k] = w))
+  words.value = next
+  focus(Math.min(i + parts.length, length.value - 1))
+}
+
 function onPaste(i: number, event: ClipboardEvent) {
   const parts = splitPhrase(event.clipboardData?.getData('text') ?? '')
   if (parts.length < 2) return
   event.preventDefault()
-  if (i === 0 && parts.length > 12) length.value = 24
-  const next = [...words.value]
-  parts.slice(0, 24 - i).forEach((w, k) => (next[i + k] = w))
-  words.value = next
-  focus(Math.min(i + parts.length, length.value - 1))
+  spread(i, parts)
+}
+
+/** Android keyboards don't report Space as a key: handle whitespace in the value. */
+function onInput(i: number) {
+  const value = words.value[i] ?? ''
+  if (!/\s/.test(value)) return
+  const parts = splitPhrase(value)
+  if (parts.length > 1) spread(i, parts)
+  else {
+    words.value[i] = parts[0] ?? ''
+    if (parts.length === 1 && i + 1 < length.value) focus(i + 1)
+  }
 }
 
 function onKey(i: number, event: KeyboardEvent) {
@@ -112,16 +133,16 @@ const fieldClass = (w: string, i: number) => {
   <div class="space-y-3">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div class="flex gap-1" role="group" aria-label="How to enter the phrase">
-        <Button type="button" size="sm" :variant="mode === 'words' ? 'default' : 'outline'" @click="setMode('words')">
+        <Button type="button" size="sm" :variant="mode === 'words' ? 'default' : 'outline'" :aria-pressed="mode === 'words'" @click="setMode('words')">
           Word by word
         </Button>
-        <Button type="button" size="sm" :variant="mode === 'paste' ? 'default' : 'outline'" @click="setMode('paste')">
+        <Button type="button" size="sm" :variant="mode === 'paste' ? 'default' : 'outline'" :aria-pressed="mode === 'paste'" @click="setMode('paste')">
           Paste phrase
         </Button>
       </div>
       <div v-if="mode === 'words'" class="flex gap-1" role="group" aria-label="Number of words">
-        <Button type="button" size="sm" :variant="length === 12 ? 'default' : 'outline'" @click="length = 12">12</Button>
-        <Button type="button" size="sm" :variant="length === 24 ? 'default' : 'outline'" @click="length = 24">24</Button>
+        <Button type="button" size="sm" :variant="length === 12 ? 'default' : 'outline'" :aria-pressed="length === 12" @click="length = 12">12</Button>
+        <Button type="button" size="sm" :variant="length === 24 ? 'default' : 'outline'" :aria-pressed="length === 24" @click="length = 24">24</Button>
       </div>
     </div>
 
@@ -142,6 +163,8 @@ const fieldClass = (w: string, i: number) => {
           autocomplete="off"
           autocapitalize="off"
           spellcheck="false"
+          autocorrect="off"
+          @input="onInput(i - 1)"
           @focus="active = i - 1"
           @blur="active = null"
           @paste="onPaste(i - 1, $event)"
@@ -163,10 +186,12 @@ const fieldClass = (w: string, i: number) => {
       class="min-h-[80px] font-mono"
       autocomplete="off"
       autocapitalize="off"
+      autocorrect="off"
       spellcheck="false"
     />
 
     <p
+      aria-live="polite"
       class="text-sm"
       :class="{ 'text-success': message.tone === 'ok', 'text-destructive': message.tone === 'error', 'text-muted-foreground': message.tone === 'muted' }"
     >

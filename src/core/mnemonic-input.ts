@@ -16,7 +16,8 @@ export function splitPhrase(text: string): string[] {
   return text
     .toLowerCase()
     .replace(/\d+[.)]/g, ' ') // "1. word 2) word"
-    .split(/[\s,]+/)
+    .split(/[\s,;]+/)
+    .map((w) => w.replace(/[^a-z]/g, '')) // stray punctuation, e.g. "zoo."
     .filter(Boolean)
 }
 
@@ -53,6 +54,8 @@ export function phraseStatus(words: string[], length?: 12 | 24): PhraseStatus {
   const filled = normalized.filter(Boolean)
   if (length !== undefined) {
     if (filled.length < length) return { kind: 'incomplete', filled: filled.length, length }
+  } else if (filled.length === 0) {
+    return { kind: 'incomplete', filled: 0, length: 12 }
   } else if (filled.length !== 12 && filled.length !== 24) {
     return filled.length < 24 && filled.length !== 0 && filled.length < 12
       ? { kind: 'incomplete', filled: filled.length, length: 12 }
