@@ -103,4 +103,8 @@ async function backToMainnet() {
 :root.has-network-banner .fixed.inset-0 {
   top: var(--network-banner-height, 2rem);
 }
+/* Tooltips, popovers and menus open near the top edge too: keep them above the strip. */
+:root.has-network-banner [data-reka-popper-content-wrapper] {
+  z-index: 101 !important;
+}
 </style>
