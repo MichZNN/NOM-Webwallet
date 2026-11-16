@@ -42,8 +42,9 @@ Settings → Secrets and variables → Actions (or on the `production` environme
 | Secret | Value |
 | --- | --- |
 | `DOCKER_DEPLOY_SSH_KEY` | Private key of a key pair made for this deploy (`ssh-keygen -t ed25519`) |
-| `DOCKER_DEPLOY_KNOWN_HOSTS` | Output of `ssh-keyscan -H your-server` (verify the fingerprint) |
+| `DOCKER_DEPLOY_KNOWN_HOSTS` | Output of `ssh-keyscan -p <port> -H your-server` (verify the fingerprint) |
 | `DOCKER_DEPLOY_HOST` | Server hostname or IP |
+| `DOCKER_DEPLOY_PORT` | SSH port of the server (optional, default 22) |
 | `DOCKER_DEPLOY_USER` | The deploy user |
 | `DOCKER_DEPLOY_PATH` | Directory holding `docker-compose.yml`, e.g. `/opt/nom-webwallet` |
 

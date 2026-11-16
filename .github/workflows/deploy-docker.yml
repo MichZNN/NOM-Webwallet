@@ -84,6 +84,7 @@ jobs:
       - name: Pull and restart on the server
         env:
           SSH_HOST: ${{ secrets.DOCKER_DEPLOY_HOST }}
+          SSH_PORT: ${{ secrets.DOCKER_DEPLOY_PORT }}
           SSH_USER: ${{ secrets.DOCKER_DEPLOY_USER }}
           DEPLOY_PATH: ${{ secrets.DOCKER_DEPLOY_PATH }}
           IMAGE: ${{ needs.build.outputs.image }}:sha-${{ github.sha }}
@@ -95,7 +96,7 @@ jobs:
           done
           # The short-lived GITHUB_TOKEN goes over stdin, so it never shows up in
           # the server's process list or shell history.
-          printf '%s' "$GHCR_TOKEN" | ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+          printf '%s' "$GHCR_TOKEN" | ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=yes \
             "$SSH_USER@$SSH_HOST" \
             "set -e; cd '$DEPLOY_PATH'
              docker login ghcr.io -u '$GHCR_USER' --password-stdin >/dev/null
