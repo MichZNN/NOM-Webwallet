@@ -1,7 +1,10 @@
 # syntax=docker/dockerfile:1
 # Fork addition: container image for the web app (build with Node, serve with nginx).
 
-FROM node:22.12-alpine AS build
+# The app is static files, so build them once on the build machine's own
+# platform and copy them into an nginx image for every target platform
+# (no emulation needed).
+FROM --platform=$BUILDPLATFORM node:22.12-alpine AS build
 WORKDIR /app
 # git is needed for the github: dependency (nom-ui)
 RUN apk add --no-cache git
