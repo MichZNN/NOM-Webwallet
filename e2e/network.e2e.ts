@@ -53,6 +53,10 @@ test('switches to testnet: banner, testnet explorer links, and back', async ({ p
   await switchTo(page, 'Testnet')
   // The wallet reloads on the new network.
   await expect(page.getByText('TESTNET · tokens have no value')).toBeVisible({ timeout: 30_000 })
+  // The header sits right below the banner, not a banner's height further down.
+  const banner = await page.getByRole('status').filter({ hasText: 'TESTNET' }).boundingBox()
+  const header = await page.locator('header').first().boundingBox()
+  expect(Math.abs(header!.y - (banner!.y + banner!.height))).toBeLessThan(2)
   expect(await page.evaluate(() => localStorage.getItem('nom-wallet-chain-id'))).toBe(String(TESTNET_CHAIN))
   expect(await page.evaluate(() => localStorage.getItem('nom-wallet-selected-node'))).toContain('testnet')
 

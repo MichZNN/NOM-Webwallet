@@ -172,3 +172,18 @@ test('a project past its 14 days shows no outcome and no vote buttons', async ({
   await expect(page.getByText('Passing')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Yes', exact: true })).toHaveCount(0)
 })
+
+test('runs proof-of-work in the PoW worker when the account has no plasma', async ({ page }) => {
+  const mock = node([], {
+    'embedded.plasma.getRequiredPoWForAccountBlock': () => ({ availablePlasma: 0, basePlasma: 21_000, requiredDifficulty: 5_000 }),
+  })
+  await mock.attach(page)
+  await openAccelerator(page)
+  await page.getByRole('button', { name: 'Donate' }).click()
+  await page.locator('#donate-amount').fill('1')
+  await page.locator('form').getByRole('button', { name: 'Donate' }).click()
+  await waitForPublished(mock.published, 1)
+  const block = mock.published[0] as unknown as { difficulty: number; nonce: string }
+  expect(block.difficulty).toBe(5_000)
+  expect(block.nonce).toMatch(/^[0-9a-f]{16}$/)
+})

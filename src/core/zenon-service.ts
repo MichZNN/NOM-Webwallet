@@ -9,6 +9,7 @@ import {
 import {storageService} from './storage/storage-service'
 import {trackPow} from './pow-status'
 import {sandboxPowProvider} from './extension-pow-provider'
+import {webPowProvider} from './web-pow-provider'
 
 /**
  * True when running inside the MV3 browser extension (popup / full page), as
@@ -98,16 +99,12 @@ export class ZenonService {
           ZenonService.powWorkerEnabled = true
         }
       } else if (isPowWorkerSupported()) {
-        try {
-          const worker = Zenon.usePowWorker()
-          // Wrap the worker's generator so global isGeneratingPow tracks PoW.
-          Zenon.setPowProvider(trackPow(worker.generate))
-          ZenonService.powWorkerEnabled = true
-        } catch (error) {
-          // A blocked worker (e.g. strict CSP) must not break sending — the SDK
-          // transparently falls back to main-thread PoW when no provider is set.
-          console.warn('Off-thread PoW worker unavailable; using main-thread PoW.', error)
-        }
+        // Our own worker file rather than the SDK's Blob worker: a Blob worker
+        // inherits the page CSP, which (rightly) has no 'unsafe-eval'. The
+        // worker starts lazily on the first PoW; a failure there rejects that
+        // send with a clear error.
+        Zenon.setPowProvider(trackPow(webPowProvider))
+        ZenonService.powWorkerEnabled = true
       }
     }
   }

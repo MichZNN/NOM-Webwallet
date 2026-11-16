@@ -17,6 +17,7 @@ export const DEFAULT_NODES: string[] = [
   DEFAULT_NODE_URL,
   'wss://my.hc1node.com:35998',
   'wss://node.zenon.nom.co:35998',
+  'wss://node.atsocy.com:35998',
 ]
 
 /**

@@ -1,10 +1,17 @@
-# Fork addition: checks on every push and pull request.
+# Fork addition: checks on pull requests and on main.
 name: CI
 
 on:
+  # Feature branches are checked through their pull request; pushing to the
+  # branch alone would run the same checks a second time.
   push:
-    branches: [main, 'claude/**']
+    branches: [main]
   pull_request:
+
+# A newer push to the same PR or branch makes the older run pointless.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
