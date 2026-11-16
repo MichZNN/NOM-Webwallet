@@ -104,6 +104,14 @@ export const STORAGE_KEY_WALLETS = 'nom-wallet-storage'
 export const MAX_PENDING_DAPP_REQUESTS = 5
 
 /** phase 2 — WalletConnect surface. */
+/**
+ * Ledger support is experimental: built against the community Zenon Ledger app's
+ * source and tested only with a simulated device. Hidden in production builds
+ * until it has run on real hardware; set VITE_ENABLE_LEDGER=true to show it.
+ */
+export const LEDGER_ENABLED: boolean =
+  import.meta.env.DEV || import.meta.env.VITE_ENABLE_LEDGER === 'true'
+
 export const WALLETCONNECT_PROJECT_ID: string = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID ?? ''
 /** phase 2 — WalletConnect surface. */
 export const WALLETCONNECT_ENABLED = WALLETCONNECT_PROJECT_ID.length >= 32
@@ -159,7 +167,14 @@ export const TX_TRACK_POLL_MS = 5000
 export const TX_TRACK_TIMEOUT_MS = 5 * 60 * 1000
 /**
  * transaction-service.ts. Ceiling on one send once it leaves the queue. It
- * covers the node connect (CONNECT_TIMEOUT_MS), the extension's 120 s PoW
- * ceiling (extension-pow-provider.ts) and the send's RPC calls, with margin.
+ * covers the node connect (CONNECT_TIMEOUT_MS) and the send's RPC calls, with
+ * margin. Time spent generating PoW does not count (see POW_TIMEOUT_MS).
  */
 export const SEND_TIMEOUT_MS = 3 * 60 * 1000
+/**
+ * Ceiling on one block's PoW, only a guard against a hung worker or sandbox.
+ * The highest difficulty a block can need (141.75M hashes) averages about 1.5
+ * minutes on a desktop browser, but single runs vary a lot (one fuse block at
+ * 78.75M took 3.5 minutes) and phones are several times slower.
+ */
+export const POW_TIMEOUT_MS = 20 * 60 * 1000

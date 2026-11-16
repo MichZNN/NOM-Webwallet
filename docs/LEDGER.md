@@ -3,6 +3,11 @@
 Ledger Nano S Plus / X / Stax / Flex with the **Zenon** app, over WebHID
 (Chrome, Edge, Brave, Opera on desktop). Keys never leave the device.
 
+> **Experimental.** Built against the source of the community Zenon Ledger app,
+> which is not in Ledger Live, and tested only with a simulated device. The
+> option is hidden in production builds; it is always shown by `npm run dev`,
+> and a production build shows it with `VITE_ENABLE_LEDGER=true`.
+
 ## How it works
 
 - **Adding:** Import Existing Wallet → **Ledger** → Connect. The browser asks

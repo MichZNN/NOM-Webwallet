@@ -3,6 +3,7 @@ import type { AccountBlockTemplate, Zenon } from 'znn-typescript-sdk'
 
 import { SEND_TIMEOUT_MS } from '@/config'
 import { isSendBusy } from './send-status'
+import { trackPow } from './pow-status'
 
 vi.mock('@/core/zenon-service', () => ({ ZenonService: { getInstance: () => ({}) } }))
 vi.mock('znn-typescript-sdk', () => ({
@@ -167,6 +168,19 @@ describe('TransactionService send queue', () => {
     await expect(p2).resolves.toBe('second')
     expect(send).toHaveBeenCalledTimes(2)
     expect(isSendBusy.value).toBe(false)
+  })
+
+  it('does not count proof-of-work against SEND_TIMEOUT_MS', async () => {
+    // A fuse without plasma: PoW alone can take longer than the node time limit.
+    const pow = trackPow(() => new Promise<string>((r) => setTimeout(() => r('nonce'), SEND_TIMEOUT_MS * 2)))
+    const send = vi.fn(async () => {
+      await pow()
+      return 'fused'
+    })
+    const service = makeService(send)
+    const p = service.sendEmbeddedContractBlock(blockA, keyPair)
+    await vi.advanceTimersByTimeAsync(SEND_TIMEOUT_MS * 2)
+    await expect(p).resolves.toBe('fused')
   })
 
   it('starts the timeout when a send leaves the queue, not when it is enqueued', async () => {

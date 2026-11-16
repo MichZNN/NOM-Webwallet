@@ -11,6 +11,7 @@ import {createSerialQueue} from './serial-queue'
 import {holdSendLock} from './send-status'
 import {withTimeout} from './with-timeout'
 import {SEND_TIMEOUT_MS} from '@/config'
+import {isGeneratingPow} from './pow-status'
 import {Zenon} from 'znn-typescript-sdk'
 import {isLedgerKeyPair, signWithLedger} from './ledger/ledger-sign'
 import {LedgerStatusError} from './ledger/apdu'
@@ -138,7 +139,9 @@ export class TransactionService extends ChainService {
           stage = 'publishing'
           return this.zenon.ledger.publishRawTransaction(prepared)
         })()
-        return withTimeout(work, SEND_TIMEOUT_MS, SEND_TIMEOUT_MESSAGE).catch((err) => {
+        // PoW time doesn't count: without plasma a contract call can need minutes
+        // of it, and that is this device working, not the node being slow.
+        return withTimeout(work, SEND_TIMEOUT_MS, SEND_TIMEOUT_MESSAGE, () => isGeneratingPow.value).catch((err) => {
           gaveUp = true
           if (ledger && err instanceof Error && err.message === SEND_TIMEOUT_MESSAGE && stage !== 'publishing') {
             // The device prompt is abandoned; drop the connection so the stale

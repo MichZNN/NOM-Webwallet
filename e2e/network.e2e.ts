@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { MockNode } from './mock-node'
 import { KEYSTORE_ADDRESS, importFixtureWallet } from './helpers'
 
@@ -24,7 +24,12 @@ const RECEIVED = {
   publicKey: '',
   signature: '',
   token: null,
-  confirmationDetail: { numConfirmations: 1, momentumHeight: 2, momentumHash: '00'.repeat(32), momentumTimestamp: 1_700_000_000 },
+  confirmationDetail: {
+    numConfirmations: 1,
+    momentumHeight: 2,
+    momentumHash: '00'.repeat(32),
+    momentumTimestamp: 1_700_000_000,
+  },
   pairedAccountBlock: null,
 }
 
@@ -41,10 +46,18 @@ async function switchTo(page: Page, label: 'Mainnet' | 'Testnet') {
   await reloaded
 }
 
+async function box(locator: Locator) {
+  const b = await locator.boundingBox()
+  if (!b) throw new Error('element has no box')
+  return b
+}
+
 test('switches to testnet: banner, testnet explorer links, and back', async ({ page }) => {
   const node = new MockNode({
     chainIdFor: (url) => (url.includes('testnet') ? TESTNET_CHAIN : 1),
-    handlers: { 'ledger.getAccountBlocksByPage': () => ({ count: 1, list: [RECEIVED], more: false }) },
+    handlers: {
+      'ledger.getAccountBlocksByPage': () => ({ count: 1, list: [RECEIVED], more: false }),
+    },
   })
   await node.attach(page)
   await importFixtureWallet(page)
@@ -54,11 +67,27 @@ test('switches to testnet: banner, testnet explorer links, and back', async ({ p
   // The wallet reloads on the new network.
   await expect(page.getByText('TESTNET · tokens have no value')).toBeVisible({ timeout: 30_000 })
   // The header sits right below the banner, not a banner's height further down.
-  const banner = await page.getByRole('status').filter({ hasText: 'TESTNET' }).boundingBox()
-  const header = await page.locator('header').first().boundingBox()
-  expect(Math.abs(header!.y - (banner!.y + banner!.height))).toBeLessThan(2)
-  expect(await page.evaluate(() => localStorage.getItem('nom-wallet-chain-id'))).toBe(String(TESTNET_CHAIN))
-  expect(await page.evaluate(() => localStorage.getItem('nom-wallet-selected-node'))).toContain('testnet')
+  const banner = await box(page.getByRole('status').filter({ hasText: 'TESTNET' }))
+  const header = await box(page.locator('header').first())
+  expect(Math.abs(header.y - (banner.y + banner.height))).toBeLessThan(2)
+  // A tooltip by the top edge opens over the banner, not under it.
+  await page.getByLabel(/^Network (dis)?connected$/).hover()
+  const tip = page.locator('[data-reka-popper-content-wrapper]').filter({ hasText: 'testnet' })
+  await expect(tip).toBeVisible()
+  const tipBox = await box(tip)
+  expect(tipBox.y).toBeLessThan(banner.y + banner.height) // it does reach into the strip
+  const onTop = await page.evaluate(
+    ([x, y]) => !!document.elementFromPoint(x, y)?.closest('[data-reka-popper-content-wrapper]'),
+    // a point inside the banner's strip
+    [tipBox.x + tipBox.width / 2, Math.max(tipBox.y + 4, banner.y + 4)]
+  )
+  expect(onTop).toBe(true)
+  expect(await page.evaluate(() => localStorage.getItem('nom-wallet-chain-id'))).toBe(
+    String(TESTNET_CHAIN)
+  )
+  expect(await page.evaluate(() => localStorage.getItem('nom-wallet-selected-node'))).toContain(
+    'testnet'
+  )
 
   await page.getByRole('tab', { name: 'History' }).click()
   await expect(page.getByLabel('View in explorer')).toHaveAttribute(
@@ -78,9 +107,14 @@ test('refuses a testnet node that reports another chain', async ({ page }) => {
   await importFixtureWallet(page)
 
   await openNetworkSettings(page)
-  await page.getByRole('group', { name: 'Network' }).getByRole('button', { name: 'Testnet' }).click()
+  await page
+    .getByRole('group', { name: 'Network' })
+    .getByRole('button', { name: 'Testnet' })
+    .click()
   await expect(page.getByText(/is on chain 1, not Testnet/)).toBeVisible({ timeout: 30_000 })
-  expect(await page.evaluate(() => localStorage.getItem('nom-wallet-chain-id'))).not.toBe(String(TESTNET_CHAIN))
+  expect(await page.evaluate(() => localStorage.getItem('nom-wallet-chain-id'))).not.toBe(
+    String(TESTNET_CHAIN)
+  )
   await expect(page.getByText('TESTNET · tokens have no value')).toBeHidden()
 })
 
@@ -88,6 +122,8 @@ test('warns loudly when the node is on another chain than the wallet', async ({ 
   const node = new MockNode({ chainIdFor: () => TESTNET_CHAIN })
   await node.attach(page)
   await importFixtureWallet(page)
-  await expect(page.getByText(`Node is on chain ${TESTNET_CHAIN}, wallet expects 1`)).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText(`Node is on chain ${TESTNET_CHAIN}, wallet expects 1`)).toBeVisible({
+    timeout: 30_000,
+  })
   await expect(page.getByRole('button', { name: 'Switch to mainnet' })).toBeVisible()
 })

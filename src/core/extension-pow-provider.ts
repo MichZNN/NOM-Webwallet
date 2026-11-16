@@ -1,4 +1,5 @@
 import type {PowProvider} from 'znn-typescript-sdk'
+import {POW_TIMEOUT_MS} from '@/config'
 
 // Runs the SDK PoW module inside the manifest sandbox page (see
 // src/pow-sandbox.ts) — the only context where its emscripten/embind
@@ -6,9 +7,6 @@ import type {PowProvider} from 'znn-typescript-sdk'
 // (bytes) are fetched here, on the extension origin, and handed to the sandbox
 // so the opaque-origin sandbox never fetches a packaged resource itself.
 
-// Generous ceiling for a single block's PoW (normally seconds). It only guards
-// against a hung or killed sandbox, so a false timeout on real work is unlikely.
-const POW_TIMEOUT_MS = 120_000
 // The sandbox posts `pow-ready` right after its page loads; if it doesn't, its
 // script was likely blocked (e.g. by CSP), so fail fast instead of hanging.
 const SANDBOX_READY_TIMEOUT_MS = 10_000
