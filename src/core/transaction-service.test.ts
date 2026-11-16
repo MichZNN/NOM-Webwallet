@@ -16,7 +16,11 @@ vi.mock('znn-typescript-sdk', () => ({
 
 import { TransactionService } from './transaction-service'
 
-type Deferred = { promise: Promise<unknown>; resolve: (v: unknown) => void; reject: (e: Error) => void }
+type Deferred = {
+  promise: Promise<unknown>
+  resolve: (v: unknown) => void
+  reject: (e: Error) => void
+}
 function deferred(): Deferred {
   let resolve!: (v: unknown) => void
   let reject!: (e: Error) => void
@@ -125,7 +129,10 @@ describe('TransactionService send queue', () => {
   })
 
   it('rejects the first caller on failure and still runs the second send', async () => {
-    const send = vi.fn().mockRejectedValueOnce(new Error('publish failed')).mockResolvedValueOnce('ok')
+    const send = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('publish failed'))
+      .mockResolvedValueOnce('ok')
     const service = makeService(send)
 
     const p1 = service.sendEmbeddedContractBlock(blockA, keyPair)
@@ -153,11 +160,14 @@ describe('TransactionService send queue', () => {
   })
 
   it('abandons a hung send after SEND_TIMEOUT_MS, then runs the queued send and clears the lock', async () => {
-    const send = vi.fn().mockReturnValueOnce(new Promise(() => {})).mockResolvedValueOnce('second')
+    const send = vi
+      .fn()
+      .mockReturnValueOnce(new Promise(() => {}))
+      .mockResolvedValueOnce('second')
     const service = makeService(send)
 
     const p1 = service.sendEmbeddedContractBlock(blockA, keyPair)
-    const rejection = expect(p1).rejects.toThrow(/outcome is unknown.*may still go through/)
+    const rejection = expect(p1).rejects.toThrow(/did not respond in time; nothing was sent/)
     const p2 = service.sendEmbeddedContractBlock(blockB, keyPair)
     await vi.advanceTimersByTimeAsync(SEND_TIMEOUT_MS - 1)
     expect(send).toHaveBeenCalledTimes(1)
@@ -172,7 +182,9 @@ describe('TransactionService send queue', () => {
 
   it('does not count proof-of-work against SEND_TIMEOUT_MS', async () => {
     // A fuse without plasma: PoW alone can take longer than the node time limit.
-    const pow = trackPow(() => new Promise<string>((r) => setTimeout(() => r('nonce'), SEND_TIMEOUT_MS * 2)))
+    const pow = trackPow(
+      () => new Promise<string>((r) => setTimeout(() => r('nonce'), SEND_TIMEOUT_MS * 2))
+    )
     const send = vi.fn(async () => {
       await pow()
       return 'fused'
@@ -198,15 +210,33 @@ describe('TransactionService send queue', () => {
     await expect(p).rejects.toThrow(/did not respond in time/)
   })
 
+  it('keeps the unknown-outcome message when the node hangs on the publish itself', async () => {
+    const zenon = {
+      prepareBlock: vi.fn(async () => 'prepared'),
+      ledger: { publishRawTransaction: () => new Promise(() => {}) },
+    }
+    const service = new TransactionService({
+      getZenon: () => zenon,
+      ensureInitialized: async () => {},
+    } as never)
+    const p = service.sendEmbeddedContractBlock(blockA, keyPair)
+    const rejection = expect(p).rejects.toThrow(/outcome is unknown.*may still go through/)
+    await vi.advanceTimersByTimeAsync(SEND_TIMEOUT_MS)
+    await rejection
+  })
+
   it('does not publish a send it already reported as timed out', async () => {
     const late = deferred()
     const send = vi.fn().mockReturnValueOnce(late.promise)
     const publishRawTransaction = vi.fn(async (b: unknown) => b)
     const zenon = { prepareBlock: send, ledger: { publishRawTransaction } }
-    const service = new TransactionService({ getZenon: () => zenon, ensureInitialized: async () => {} } as never)
+    const service = new TransactionService({
+      getZenon: () => zenon,
+      ensureInitialized: async () => {},
+    } as never)
 
     const p = service.sendEmbeddedContractBlock(blockA, keyPair)
-    const rejection = expect(p).rejects.toThrow(/outcome is unknown/)
+    const rejection = expect(p).rejects.toThrow(/nothing was sent/)
     await vi.advanceTimersByTimeAsync(SEND_TIMEOUT_MS)
     await rejection
     late.resolve('prepared late')
@@ -216,7 +246,10 @@ describe('TransactionService send queue', () => {
 
   it('starts the timeout when a send leaves the queue, not when it is enqueued', async () => {
     const first = deferred()
-    const send = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(new Promise(() => {}))
+    const send = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(new Promise(() => {}))
     const service = makeService(send)
 
     const p1 = service.sendEmbeddedContractBlock(blockA, keyPair)

@@ -28,7 +28,7 @@ if (typeof window !== 'undefined') {
   setInterval(() => {
     if (unlockedWallets.value.length === 0) return
     const now = WalletService.getInstance().getUnlockedWallets()
-    if (now.length !== unlockedWallets.value.length) {
+    if (now.length !== unlockedWallets.value.length || now.some((a) => !unlockedWallets.value.includes(a))) {
       unlockedWallets.value = now
       window.dispatchEvent(new CustomEvent('wallet-status-changed'))
     }

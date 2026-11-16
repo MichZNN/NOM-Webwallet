@@ -28,4 +28,18 @@ describe('withTimeout', () => {
     await vi.advanceTimersByTimeAsync(1)
     await expect(p).rejects.toThrow('too slow')
   })
+
+  it('does not expire while paused, even if time ran out just before', async () => {
+    let paused = false
+    let settled = false
+    const p = withTimeout(new Promise(() => {}), 5000, 'too slow', () => paused)
+    p.catch(() => (settled = true))
+    await vi.advanceTimersByTimeAsync(4500)
+    paused = true // PoW starts inside the last interval
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(settled).toBe(false)
+    paused = false
+    await vi.advanceTimersByTimeAsync(1000)
+    await expect(p).rejects.toThrow('too slow')
+  })
 })

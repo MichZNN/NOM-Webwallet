@@ -26,7 +26,8 @@ export function withTimeout<T>(
           if (!wasPaused) left -= now - last
           last = now
           wasPaused = paused()
-          if (left <= 0) reject(new Error(message))
+          // Never expire while paused: the last interval may have run into PoW.
+          if (left <= 0 && !wasPaused) reject(new Error(message))
           else wait()
         }, Math.min(PAUSE_TICK_MS, Math.max(left, 0)))
       }

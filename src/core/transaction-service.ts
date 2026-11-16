@@ -20,6 +20,8 @@ import type {LedgerKeyPair} from './ledger/ledger-sign'
 
 const SEND_TIMEOUT_MESSAGE =
   'The outcome is unknown: the node did not respond in time and this transaction may still go through. Check your account history before sending again.'
+// Timed out before publishing: the gaveUp check guarantees it is never sent.
+const NOT_SENT_TIMEOUT_MESSAGE = 'The node did not respond in time; nothing was sent. You can try again.'
 
 export class TransactionService extends ChainService {
   private static instance: TransactionService | null = null
@@ -151,6 +153,9 @@ export class TransactionService extends ChainService {
             // request doesn't block the next one. Nothing was published.
             void disconnectLedger()
             throw new Error('Not confirmed on the Ledger in time; nothing was sent')
+          }
+          if (err instanceof Error && err.message === SEND_TIMEOUT_MESSAGE && stage !== 'publishing') {
+            throw new Error(NOT_SENT_TIMEOUT_MESSAGE)
           }
           throw err
         })
